@@ -1,0 +1,12 @@
+{
+  "_comment": "Per-unit costs in USD. Token costs are per 1M tokens — aiCostTracker divides by 1_000_000. Update when providers change pricing.",
+
+  "claude-opus-4-6":        { "input": 15.0,  "output": 75.0 },
+  "claude-sonnet-4-6":      { "input": 3.0,   "output": 15.0 },
+  "text-embedding-3-small": { "input": 0.02,  "output": 0 },
+  "gpt-image-1":            { "perImage": 0.04 },
+  "stable-diffusion-3":     { "perImage": 0.02 },
+  "gen3a_turbo":            { "perSecond": 0.05 },
+  "heygen-v2":              { "perSecond": 0.08 },
+  "eleven_multilingual_v2": { "perChar": 0.00003 }
+}
