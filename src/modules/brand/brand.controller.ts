@@ -9,7 +9,14 @@ export const createBrand = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const user = req.user as IUserDocument;
     const userId = user._id;
-    const { businessName, industry, description, brandDNA } = req.body;
+    const {
+      businessName,
+      industry,
+      description,
+      website,
+      targetMarket,
+      brandDNA,
+    } = req.body;
 
     if (!businessName || !industry) {
       return sendError(res, 400, ErrorCode.ValidationError, req);
@@ -21,6 +28,8 @@ export const createBrand = asyncHandler(
         businessName,
         industry,
         description,
+        website,
+        targetMarket,
         brandDNA,
       });
 

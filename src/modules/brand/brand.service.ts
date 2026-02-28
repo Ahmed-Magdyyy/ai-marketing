@@ -24,6 +24,11 @@ export interface CreateBrandInput {
   businessName: string;
   industry: string;
   description?: string;
+  website?: string;
+  targetMarket?: {
+    country?: string;
+    city?: string;
+  };
   brandDNA?: BrandDNAInput;
 }
 
@@ -31,6 +36,7 @@ export interface UpdateBrandInput {
   businessName?: string;
   industry?: string;
   description?: string;
+  website?: string;
   targetMarket?: {
     country?: string;
     city?: string;
@@ -39,7 +45,15 @@ export interface UpdateBrandInput {
 }
 
 async function createBrand(input: CreateBrandInput): Promise<BrandProfile> {
-  const { userId, businessName, industry, description, brandDNA } = input;
+  const {
+    userId,
+    businessName,
+    industry,
+    description,
+    website,
+    targetMarket,
+    brandDNA,
+  } = input;
 
   if (!businessName || !industry) {
     throw new ApiError(400, ErrorCode.ValidationError);
@@ -50,6 +64,8 @@ async function createBrand(input: CreateBrandInput): Promise<BrandProfile> {
     businessName,
     industry,
     description,
+    website,
+    targetMarket,
     brandDNA,
   });
 

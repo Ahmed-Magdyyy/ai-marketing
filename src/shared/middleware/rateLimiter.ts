@@ -3,10 +3,10 @@
 // Uses Redis store via rate-limit-redis for distributed limiting.
 // ─────────────────────────────────────────────────────────────────
 
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { RedisStore, SendCommandFn } from "rate-limit-redis";
 import { getRedisClient } from "../config/redis";
-import { Request } from "express";
+import type { IUserDocument } from "../../modules/auth/user.model";
 
 const redis = getRedisClient();
 
@@ -33,10 +33,10 @@ export const authLimiter = rateLimit({
 export const agentChatLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 20, // 20 agent messages per user per minute
-  keyGenerator: (req: Request): string =>
-    (req as unknown as { user?: { id?: string } }).user?.id ??
-    req.ip ??
-    "unknown",
+  keyGenerator: (req) => {
+    const user = req.user as IUserDocument | undefined;
+    return user?._id?.toString() ?? ipKeyGenerator(req.ip!);
+  },
   store: isTest ? undefined : new RedisStore({ sendCommand }),
   message: {
     success: false,
@@ -49,10 +49,10 @@ export const agentChatLimiter = rateLimit({
 export const contentGenerationLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 10, // 10 generation requests per user per minute
-  keyGenerator: (req: Request): string =>
-    (req as unknown as { user?: { id?: string } }).user?.id ??
-    req.ip ??
-    "unknown",
+  keyGenerator: (req) => {
+    const user = req.user as IUserDocument | undefined;
+    return user?._id?.toString() ?? ipKeyGenerator(req.ip!);
+  },
   store: isTest ? undefined : new RedisStore({ sendCommand }),
   message: {
     success: false,
@@ -79,10 +79,10 @@ export const globalLimiter = rateLimit({
 export const fileUploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10, // 10 uploads per user per hour
-  keyGenerator: (req: Request): string =>
-    (req as unknown as { user?: { id?: string } }).user?.id ??
-    req.ip ??
-    "unknown",
+  keyGenerator: (req) => {
+    const user = req.user as IUserDocument | undefined;
+    return user?._id?.toString() ?? ipKeyGenerator(req.ip!);
+  },
   store: isTest ? undefined : new RedisStore({ sendCommand }),
   message: {
     success: false,
