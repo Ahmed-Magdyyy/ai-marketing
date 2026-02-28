@@ -4,12 +4,10 @@
 // Used by aiCostTracker.ts and costGuard.middleware.ts.
 // ─────────────────────────────────────────────────────────────────
 
-import mongoose, { Schema, type HydratedDocument } from "mongoose";
+import mongoose, { Schema } from "mongoose";
 import type { IAiUsageLog } from "../types";
 
-export type IAiUsageLogDocument = HydratedDocument<IAiUsageLog>;
-
-const aiUsageLogSchema = new Schema<IAiUsageLogDocument>(
+const aiUsageLogSchema = new Schema<IAiUsageLog>(
   {
     userId: { type: String, required: true },
     model: { type: String, required: true },
@@ -32,7 +30,7 @@ aiUsageLogSchema.index({ userId: 1, timestamp: -1 });
 // Global cost dashboards
 aiUsageLogSchema.index({ timestamp: -1 });
 
-export const AiUsageLog = mongoose.model<IAiUsageLogDocument>(
+export const AiUsageLog = mongoose.model<IAiUsageLog>(
   "AiUsageLog",
   aiUsageLogSchema,
 );

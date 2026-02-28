@@ -292,6 +292,7 @@ project-root/
         agent.routes.ts
         agent.controller.ts
         agent.service.ts
+        agent.context.ts      ← file context injection + image blocks for Anthropic API
         agent.tools.ts        ← AI tool definitions (web search, scraper, etc.)
         agent.memory.ts       ← vector memory read/write
         agent.prompts.ts      ← all system prompts for the agent
@@ -342,6 +343,7 @@ project-root/
         rateLimiter.ts
       utils/
         apiResponse.ts
+        socketProvider.ts   ← Socket.io singleton — use getIO() everywhere, never import from server.ts
         asyncHandler.ts
         logger.ts
         arabCalendar.ts
@@ -1438,6 +1440,62 @@ export enum ScrapingTier {
   Dynamic = 'dynamic',
   Stealth = 'stealth',
   Puppeteer = 'puppeteer'
+}
+
+export enum UserRole {
+  User   = 'user',
+  Admin  = 'admin'
+}
+
+export enum BillingCycle {
+  Monthly  = 'monthly',
+  Annual   = 'annual'
+}
+
+export enum BrandTone {
+  Professional  = 'professional',
+  Playful       = 'playful',
+  Bold          = 'bold',
+  Casual        = 'casual'
+}
+
+export enum AssetType {
+  Image      = 'image',
+  Video      = 'video',
+  Voiceover  = 'voiceover',
+  Caption    = 'caption',
+  Design     = 'design'
+}
+
+export enum SocialPlatform {
+  Facebook   = 'facebook',
+  Instagram  = 'instagram',
+  TikTok     = 'tiktok',
+  Twitter    = 'twitter'
+}
+
+export enum ConversationRole {
+  User       = 'user',
+  Assistant  = 'assistant',
+  Tool       = 'tool'
+}
+
+export enum LearningSource {
+  Conversation        = 'conversation',
+  PerformanceReview   = 'performance_review',
+  Feedback            = 'feedback'
+}
+
+// ── Kill Switch Keys ─────────────────────────────────────────────
+// Member names are PascalCase. String values are the exact env var names
+// read by killSwitch.middleware.ts via process.env — do NOT change string values.
+export enum KillSwitch {
+  DeepResearch  = 'KILL_DEEP_RESEARCH',
+  Opus          = 'KILL_OPUS',
+  Video         = 'KILL_VIDEO',
+  Voiceover     = 'KILL_VOICEOVER',
+  Content       = 'KILL_CONTENT',
+  All           = 'KILL_ALL'
 }
 
 // ── Arabic Dialects ───────────────────────────────────────────────
@@ -3081,9 +3139,17 @@ Tasks:
    - `chat(userId, userMessage)` — use `getReasoningModel()` from killSwitch.middleware.ts (NOT `MODELS.AGENT_REASONING` directly — respects KILL_OPUS switch)
    - `executeToolWithRetry` for all tool calls (max 3 retries)
    - Wrap every Anthropic API call with `trackTokenUsage()` + `logger.info('ai_call', {...})` including latency
-6. `POST /api/agent/chat` route — apply `killSwitch('READ_ONLY_MODE', ...)` middleware
-7. Set up Socket.io in `server.ts`
-8. Create `shared/config/qdrant.ts` — Qdrant client (`shared/config/redis.ts` already created in Phase 1)
+   - Emit `agent:chunk` and `agent:done` Socket.io events via `getIO()` from `socketProvider.ts` — never import `io` from `server.ts` directly
+7. `POST /api/agent/chat` route — apply `killSwitch('READ_ONLY_MODE', ...)` middleware
+8. Set up Socket.io in `server.ts` — call `setIO(io)` after initialization
+9. Create `shared/utils/socketProvider.ts` — **critical architectural note:**
+   - Holds the Socket.io `Server` instance as a singleton
+   - Created to break the circular dependency between `server.ts` and `agent.service.ts`
+   - `server.ts` calls `setIO(io)` after Socket.io initialization
+   - Any module that needs to emit events calls `getIO()` — never import `io` from `server.ts`
+   - Pattern: `export function setIO(instance: Server): void` + `export function getIO(): Server`
+   - ⚠️ If you import `io` directly from `server.ts` in any module, you will create a circular dependency that breaks Jest and ts-node
+10. Create `shared/config/qdrant.ts` — Qdrant client (`shared/config/redis.ts` already created in Phase 1)
 
 **Definition of Done:**
 - `POST /api/upload` accepts: PDF, Word (.docx), Excel (.xlsx), plain text, PNG, JPG, WEBP, GIF, SVG, .ai, .eps, .psd. Returns `{ fileId, filename, mimeType, assetType, extractedText, parseWarning }`. File stored in R2, metadata in `UploadedFile` collection.

@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────
 
 import mongoose, { Schema, Document } from "mongoose";
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import {
   PlanTier,
   BillingCycle,
@@ -46,23 +46,23 @@ const userSchema = new Schema<IUserDocument>(
     role: {
       type: String,
       enum: Object.values(UserRole),
-      default: UserRole.USER,
+      default: UserRole.User,
     },
     plan: {
       tier: {
         type: String,
         enum: Object.values(PlanTier),
-        default: PlanTier.FREE,
+        default: PlanTier.Free,
       },
       billingCycle: {
         type: String,
         enum: Object.values(BillingCycle),
-        default: BillingCycle.MONTHLY,
+        default: BillingCycle.Monthly,
       },
       status: {
         type: String,
         enum: Object.values(PlanStatus),
-        default: PlanStatus.ACTIVE,
+        default: PlanStatus.Active,
       },
       currentPeriodEnd: {
         type: Date,

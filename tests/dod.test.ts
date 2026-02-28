@@ -20,8 +20,8 @@ describe("Phase 1 Definition of Done Checks", () => {
   });
 
   it("getPlanLimits(PlanTier.Free) and getPlanLimits(PlanTier.Starter) return without error", () => {
-    expect(() => getPlanLimits(PlanTier.FREE)).not.toThrow();
-    expect(() => getPlanLimits(PlanTier.STARTER)).not.toThrow();
+    expect(() => getPlanLimits(PlanTier.Free)).not.toThrow();
+    expect(() => getPlanLimits(PlanTier.Starter)).not.toThrow();
   });
 
   it("Exports test - ArabicDialect enum and fileUploadLimiter exported", () => {

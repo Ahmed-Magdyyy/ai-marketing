@@ -36,6 +36,21 @@ interface EnvConfig {
   KILL_CONTENT: boolean;
   KILL_ALL: boolean;
 
+  // Object Storage — provider-agnostic
+  STORAGE_PROVIDER: "r2" | "b2";
+
+  // Backblaze B2 (development — no card required)
+  B2_ENDPOINT: string;
+  B2_APPLICATION_KEY_ID: string;
+  B2_APPLICATION_KEY: string;
+  B2_BUCKET: string;
+
+  // Cloudflare R2 (production — zero egress)
+  R2_ACCOUNT_ID: string;
+  R2_ACCESS_KEY: string;
+  R2_SECRET_KEY: string;
+  R2_BUCKET: string;
+
   // App
   FRONTEND_URL: string;
 }
@@ -94,6 +109,21 @@ function validateEnv(): EnvConfig {
     KILL_VOICEOVER: process.env.KILL_VOICEOVER === "true",
     KILL_CONTENT: process.env.KILL_CONTENT === "true",
     KILL_ALL: process.env.KILL_ALL === "true",
+
+    // Object Storage
+    STORAGE_PROVIDER: (process.env.STORAGE_PROVIDER as "r2" | "b2") || "b2",
+
+    // Backblaze B2 (development)
+    B2_ENDPOINT: process.env.B2_ENDPOINT || "",
+    B2_APPLICATION_KEY_ID: process.env.B2_APPLICATION_KEY_ID || "",
+    B2_APPLICATION_KEY: process.env.B2_APPLICATION_KEY || "",
+    B2_BUCKET: process.env.B2_BUCKET || "",
+
+    // Cloudflare R2 (production)
+    R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID || "",
+    R2_ACCESS_KEY: process.env.R2_ACCESS_KEY || "",
+    R2_SECRET_KEY: process.env.R2_SECRET_KEY || "",
+    R2_BUCKET: process.env.R2_BUCKET || "",
 
     // App
     FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:3001",

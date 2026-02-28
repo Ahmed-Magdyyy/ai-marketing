@@ -5,29 +5,29 @@
 // ── Model Roles ──────────────────────────────────────────────────
 
 export enum ModelRole {
-  AGENT_REASONING = "AGENT_REASONING",
-  AGENT_FAST = "AGENT_FAST",
-  IMAGE_PRIMARY = "IMAGE_PRIMARY",
-  IMAGE_SECONDARY = "IMAGE_SECONDARY",
-  EMBEDDINGS = "EMBEDDINGS",
-  VIDEO_SHORT = "VIDEO_SHORT",
-  VIDEO_PRESENTER = "VIDEO_PRESENTER",
-  VOICEOVER = "VOICEOVER",
+  AgentReasoning = "AGENT_REASONING",
+  AgentFast = "AGENT_FAST",
+  ImagePrimary = "IMAGE_PRIMARY",
+  ImageSecondary = "IMAGE_SECONDARY",
+  Embeddings = "EMBEDDINGS",
+  VideoShort = "VIDEO_SHORT",
+  VideoPresenter = "VIDEO_PRESENTER",
+  Voiceover = "VOICEOVER",
 }
 
 // ── Plan Tiers ───────────────────────────────────────────────────
 
 export enum PlanTier {
-  FREE = "free",
-  STARTER = "starter",
-  GROWTH = "growth",
-  AGENCY = "agency",
-  CUSTOM = "custom",
+  Free = "free",
+  Starter = "starter",
+  Growth = "growth",
+  Agency = "agency",
+  Custom = "custom",
 }
 
 export enum BillingCycle {
-  MONTHLY = "monthly",
-  ANNUAL = "annual",
+  Monthly = "monthly",
+  Annual = "annual",
 }
 
 // ── Arabic Dialect ───────────────────────────────────────────────
@@ -46,17 +46,17 @@ export enum ArabicDialect {
 }
 
 export enum PlanStatus {
-  ACTIVE = "active",
-  CANCELLED = "cancelled",
-  PAST_DUE = "past_due",
-  TRIALING = "trialing",
+  Active = "active",
+  Cancelled = "cancelled",
+  PastDue = "past_due",
+  Trialing = "trialing",
 }
 
 // ── User ─────────────────────────────────────────────────────────
 
 export enum UserRole {
-  USER = "user",
-  ADMIN = "admin",
+  User = "user",
+  Admin = "admin",
 }
 
 export interface UserPlan {
@@ -109,16 +109,10 @@ export interface IUser {
 // ── Brand Profile ────────────────────────────────────────────────
 
 export enum BrandTone {
-  PROFESSIONAL = "professional",
-  PLAYFUL = "playful",
-  BOLD = "bold",
-  CASUAL = "casual",
-}
-
-export enum BrandDialect {
-  EGYPTIAN_ARABIC = "egyptian_arabic",
-  MSA = "msa",
-  ENGLISH = "english",
+  Professional = "professional",
+  Playful = "playful",
+  Bold = "bold",
+  Casual = "casual",
 }
 
 export interface TargetAudience {
@@ -142,7 +136,7 @@ export interface BrandDNA {
   colors: string[];
   fonts: string[];
   tone: BrandTone;
-  dialect: BrandDialect;
+  contentDialect: ArabicDialect;
   targetAudience: TargetAudience;
   uvp: string;
   competitors: CompetitorInfo[];
@@ -161,8 +155,8 @@ export interface IBrandProfile {
   userId: string;
   businessName: string;
   industry: string;
-  website: string;
-  location: string;
+  website?: string;
+  targetMarket: { country: string; city?: string };
   brandDNA: BrandDNA;
   socialAccounts: SocialAccount[];
   onboardingComplete: boolean;
@@ -173,10 +167,10 @@ export interface IBrandProfile {
 // ── Marketing Plan ───────────────────────────────────────────────
 
 export enum PlanStatusType {
-  DRAFT = "draft",
-  APPROVED = "approved",
-  ACTIVE = "active",
-  COMPLETED = "completed",
+  Draft = "draft",
+  Approved = "approved",
+  Active = "active",
+  Completed = "completed",
 }
 
 export interface PlanStrategy {
@@ -203,27 +197,27 @@ export interface IMarketingPlan {
 // ── Content ──────────────────────────────────────────────────────
 
 export enum ContentStatus {
-  PENDING_GENERATION = "pending_generation",
-  DRAFT = "draft",
-  APPROVED = "approved",
-  SCHEDULED = "scheduled",
-  POSTED = "posted",
+  PendingGeneration = "pending_generation",
+  Draft = "draft",
+  Approved = "approved",
+  Scheduled = "scheduled",
+  Posted = "posted",
 }
 
 export enum ContentType {
-  POST = "post",
-  REEL = "reel",
-  STORY = "story",
-  CAROUSEL = "carousel",
-  AD = "ad",
+  Post = "post",
+  Reel = "reel",
+  Story = "story",
+  Carousel = "carousel",
+  Ad = "ad",
 }
 
 export enum AssetType {
-  IMAGE = "image",
-  VIDEO = "video",
-  VOICEOVER = "voiceover",
-  CAPTION = "caption",
-  DESIGN = "design",
+  Image = "image",
+  Video = "video",
+  Voiceover = "voiceover",
+  Caption = "caption",
+  Design = "design",
 }
 
 export interface ContentAsset {
@@ -268,39 +262,18 @@ export interface IGeneratedAsset {
   createdAt: Date;
 }
 
-// ── AI Usage Log ─────────────────────────────────────────────────
-
-export enum UsageType {
-  TOKEN = "token",
-  UNIT = "unit",
-}
-
-export interface IAiUsageLog {
-  _id: string;
-  userId: string;
-  model: string;
-  role: ModelRole;
-  usageType: UsageType;
-  inputTokens?: number;
-  outputTokens?: number;
-  units?: number;
-  costUsd: number;
-  metadata: Record<string, unknown>;
-  createdAt: Date;
-}
-
 // ── Agent Memory ─────────────────────────────────────────────────
 
 export enum ConversationRole {
-  USER = "user",
-  ASSISTANT = "assistant",
-  TOOL = "tool",
+  User = "user",
+  Assistant = "assistant",
+  Tool = "tool",
 }
 
 export enum LearningSource {
-  CONVERSATION = "conversation",
-  PERFORMANCE_REVIEW = "performance_review",
-  FEEDBACK = "feedback",
+  Conversation = "conversation",
+  PerformanceReview = "performance_review",
+  Feedback = "feedback",
 }
 
 // ── API Response ─────────────────────────────────────────────────
@@ -472,21 +445,22 @@ export function getErrorMessage(
 // ── Kill Switch Keys ─────────────────────────────────────────────
 
 export enum KillSwitch {
-  KILL_DEEP_RESEARCH = "KILL_DEEP_RESEARCH",
-  KILL_OPUS = "KILL_OPUS",
-  KILL_VIDEO = "KILL_VIDEO",
-  KILL_VOICEOVER = "KILL_VOICEOVER",
-  KILL_CONTENT = "KILL_CONTENT",
-  KILL_ALL = "KILL_ALL",
+  DeepResearch = "KILL_DEEP_RESEARCH",
+  Opus = "KILL_OPUS",
+  Video = "KILL_VIDEO",
+  Voiceover = "KILL_VOICEOVER",
+  Content = "KILL_CONTENT",
+  Agent = "KILL_AGENT",
+  All = "KILL_ALL",
 }
 
 // ── Social Platforms ─────────────────────────────────────────────
 
 export enum SocialPlatform {
-  FACEBOOK = "facebook",
-  INSTAGRAM = "instagram",
-  TIKTOK = "tiktok",
-  TWITTER = "twitter",
+  Facebook = "facebook",
+  Instagram = "instagram",
+  TikTok = "tiktok",
+  Twitter = "twitter",
 }
 
 // ── AI Usage Log ─────────────────────────────────────────────────

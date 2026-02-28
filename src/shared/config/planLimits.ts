@@ -37,7 +37,7 @@ const MAX_SAFE_LIMIT = {
 // ── Plan Definitions ──────────────────────────────────────────────
 
 const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
-  [PlanTier.FREE]: {
+  [PlanTier.Free]: {
     priceMonthly: 0,
     priceAnnual: 0,
     brandsAllowed: 1,
@@ -55,7 +55,7 @@ const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     maxCrawlMinutesPerRun: 0,
   },
 
-  [PlanTier.STARTER]: {
+  [PlanTier.Starter]: {
     priceMonthly: 299,
     priceAnnual: 2990,
     brandsAllowed: 1,
@@ -73,7 +73,7 @@ const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     maxCrawlMinutesPerRun: 5,
   },
 
-  [PlanTier.GROWTH]: {
+  [PlanTier.Growth]: {
     priceMonthly: 699,
     priceAnnual: 6990,
     brandsAllowed: 2,
@@ -91,7 +91,7 @@ const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     maxCrawlMinutesPerRun: 10,
   },
 
-  [PlanTier.AGENCY]: {
+  [PlanTier.Agency]: {
     priceMonthly: 1499,
     priceAnnual: 14990,
     brandsAllowed: 10,
@@ -109,7 +109,7 @@ const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     maxCrawlMinutesPerRun: 15,
   },
 
-  [PlanTier.CUSTOM]: {
+  [PlanTier.Custom]: {
     priceMonthly: null,
     priceAnnual: null,
     brandsAllowed: MAX_SAFE_LIMIT.brandsAllowed,
@@ -131,11 +131,11 @@ const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
 // ── Monthly AI Cost Caps (USD) — enforced by aiCostTracker ───────
 
 const MONTHLY_COST_CAPS_USD: Record<PlanTier, number | null> = {
-  [PlanTier.FREE]: 0.1,
-  [PlanTier.STARTER]: 2,
-  [PlanTier.GROWTH]: 8,
-  [PlanTier.AGENCY]: 25,
-  [PlanTier.CUSTOM]: null, // no cap — monitored manually
+  [PlanTier.Free]: 0.1,
+  [PlanTier.Starter]: 2,
+  [PlanTier.Growth]: 8,
+  [PlanTier.Agency]: 25,
+  [PlanTier.Custom]: null, // no cap — monitored manually
 };
 
 // ── Accessors ─────────────────────────────────────────────────────

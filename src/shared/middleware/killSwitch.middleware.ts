@@ -36,6 +36,10 @@ const SWITCHES = {
   // Puts entire platform in read-only mode (no writes, no jobs, no AI calls)
   // Use when: data integrity issue detected, emergency investigation needed
   READ_ONLY_MODE: process.env.KILL_ALL === "true",
+
+  // Disables the smart agent (chat)
+  // Use when API costs spike or emergency maintenance on agent infrastructure
+  DISABLE_AGENT: process.env.KILL_AGENT === "true",
 } as const;
 
 // ── Switch Name Type ──────────────────────────────────────────────
@@ -44,9 +48,11 @@ type SwitchName = keyof typeof SWITCHES;
 
 // ── Middleware Factory ────────────────────────────────────────────
 // Usage: killSwitch('DISABLE_DEEP_RESEARCH')
+// Usage: killSwitch('DISABLE_AGENT', 'الوكيل الذكي مش متاح دلوقتي.')
 
 function killSwitch(
   switchName: SwitchName,
+  customMessage?: string,
 ): (req: Request, res: Response, next: NextFunction) => void {
   return (req: Request, res: Response, next: NextFunction): void => {
     const active = SWITCHES[switchName] || SWITCHES.READ_ONLY_MODE;
@@ -64,7 +70,8 @@ function killSwitch(
       });
 
       const lang = getLang(req);
-      const message = getErrorMessage(ErrorCode.KillSwitchActive, lang);
+      const message =
+        customMessage ?? getErrorMessage(ErrorCode.KillSwitchActive, lang);
 
       res.status(503).json({
         success: false,
@@ -80,14 +87,14 @@ function killSwitch(
 }
 
 // ── getReasoningModel ─────────────────────────────────────────────
-// Used in agent.service.ts instead of getModel(ModelRole.AGENT_REASONING).
+// Used in agent.service.ts instead of getModel(ModelRole.AgentReasoning).
 // When KILL_OPUS is active, automatically downgrades to Sonnet.
 
 function getReasoningModel(): string {
   if (SWITCHES.DOWNGRADE_OPUS_TO_SONNET) {
-    return getModel(ModelRole.AGENT_FAST); // Downgrade to Sonnet
+    return getModel(ModelRole.AgentFast); // Downgrade to Sonnet
   }
-  return getModel(ModelRole.AGENT_REASONING);
+  return getModel(ModelRole.AgentReasoning);
 }
 
 export { SWITCHES, SwitchName, killSwitch, getReasoningModel };

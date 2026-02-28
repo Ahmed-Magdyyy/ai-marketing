@@ -33,3 +33,7 @@ verify_output.txt
 # OS files
 .DS_Store
 Thumbs.db
+ts_errors.txt
+.gitignore
+src/modules/upload/upload.service.test.ts
+tests/dod.test.ts

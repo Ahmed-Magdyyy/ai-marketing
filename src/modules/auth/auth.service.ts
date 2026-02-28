@@ -2,7 +2,7 @@
 // Auth Service — register, login, token refresh, logout
 // ─────────────────────────────────────────────────────────────────
 
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { UserModel, IUserDocument } from "./user.model";
 import { ApiError } from "../../shared/utils/ApiError";
@@ -55,7 +55,7 @@ async function register(
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
   // Resolve plan limits for Free tier
-  const freeLimits = getPlanLimits(PlanTier.FREE);
+  const freeLimits = getPlanLimits(PlanTier.Free);
 
   // Create user
   const user = await UserModel.create({

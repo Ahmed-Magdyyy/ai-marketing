@@ -40,7 +40,7 @@ export const agentChatLimiter = rateLimit({
   store: isTest ? undefined : new RedisStore({ sendCommand }),
   message: {
     success: false,
-    message: "بعت رسايل كتير أوي. ريّح شوية وحاول تاني.",
+    message: "بعت رسايل كتير أوي. حاول تانى بعد شوية.",
     data: null,
   },
 });
