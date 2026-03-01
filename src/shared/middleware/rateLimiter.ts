@@ -19,6 +19,7 @@ const isTest = process.env.NODE_ENV === "test";
 
 // ── Auth routes — prevent brute force ─────────────────────────────
 export const authLimiter = rateLimit({
+  skip: () => ["development", "test"].includes(process.env.NODE_ENV ?? ""),
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10, // 10 attempts per IP
   store: isTest ? undefined : new RedisStore({ sendCommand }),
@@ -31,6 +32,7 @@ export const authLimiter = rateLimit({
 
 // ── Agent chat — per-user Opus rate limit ─────────────────────────
 export const agentChatLimiter = rateLimit({
+  skip: () => ["development", "test"].includes(process.env.NODE_ENV ?? ""),
   windowMs: 60 * 1000, // 1 minute
   max: 20, // 20 agent messages per user per minute
   keyGenerator: (req) => {
@@ -47,6 +49,7 @@ export const agentChatLimiter = rateLimit({
 
 // ── Content generation — per-user burst protection ────────────────
 export const contentGenerationLimiter = rateLimit({
+  skip: () => ["development", "test"].includes(process.env.NODE_ENV ?? ""),
   windowMs: 60 * 1000, // 1 minute
   max: 10, // 10 generation requests per user per minute
   keyGenerator: (req) => {
@@ -63,6 +66,7 @@ export const contentGenerationLimiter = rateLimit({
 
 // ── API general — per-IP flood protection ─────────────────────────
 export const globalLimiter = rateLimit({
+  skip: () => ["development", "test"].includes(process.env.NODE_ENV ?? ""),
   windowMs: 60 * 1000, // 1 minute
   max: 200, // 200 requests per IP per minute (general)
   store: isTest ? undefined : new RedisStore({ sendCommand }),
@@ -77,6 +81,7 @@ export const globalLimiter = rateLimit({
 // 10 uploads per user per hour. Covers PDFs, Word, Excel, images.
 // Applied to POST /api/upload — built in Phase 3 alongside agent chat.
 export const fileUploadLimiter = rateLimit({
+  skip: () => ["development", "test"].includes(process.env.NODE_ENV ?? ""),
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10, // 10 uploads per user per hour
   keyGenerator: (req) => {

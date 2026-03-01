@@ -10,6 +10,8 @@ import {
   PlanStatus,
   UserRole,
   IUser,
+  UserStatus,
+  SignupProvider,
 } from "../../shared/types";
 
 export interface IUserDocument extends Omit<IUser, "_id">, Document {
@@ -22,12 +24,13 @@ const userSchema = new Schema<IUserDocument>(
       type: String,
       required: true,
       unique: true,
+      index: true,
       lowercase: true,
       trim: true,
     },
     passwordHash: {
       type: String,
-      required: true,
+      default: "",
     },
     name: {
       type: String,
@@ -105,14 +108,74 @@ const userSchema = new Schema<IUserDocument>(
       type: Date,
       default: Date.now,
     },
+
+    // ── Enhanced Auth Fields ──────────────────────────────────
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    status: {
+      type: String,
+      enum: [
+        "active",
+        "inactive",
+        "suspended",
+        "banned",
+      ] satisfies UserStatus[],
+      default: "inactive" satisfies UserStatus,
+    },
+    statusReason: {
+      type: String,
+      default: "",
+    },
+    statusChangedAt: {
+      type: Date,
+      default: undefined,
+    },
+    statusChangedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: undefined,
+    },
+    signupProvider: {
+      type: String,
+      enum: ["email", "google"] satisfies SignupProvider[],
+      default: "email" satisfies SignupProvider,
+    },
+    authProviders: [
+      {
+        provider: {
+          type: String,
+          required: true,
+          enum: ["google"],
+        },
+        providerUserId: {
+          type: String,
+          required: true,
+        },
+        providerEmail: {
+          type: String,
+          required: true,
+        },
+        linkedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+    passwordChangedAt: {
+      type: Date,
+      default: undefined,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: { createdAt: "createdAt", updatedAt: false },
   },
 );
-
-// ── Index for email lookups ──────────────────────────────────────
-userSchema.index({ email: 1 }, { unique: true });
 
 // ── Password comparison method ───────────────────────────────────
 userSchema.methods.comparePassword = async function (
@@ -120,6 +183,22 @@ userSchema.methods.comparePassword = async function (
 ): Promise<boolean> {
   return bcrypt.compare(candidatePassword, this.passwordHash);
 };
+
+// ── Compound sparse unique index for authProviders ──────────────
+// Prevents the same provider account from being linked to multiple users
+userSchema.index(
+  { "authProviders.provider": 1, "authProviders.providerUserId": 1 },
+  { unique: true, sparse: true },
+);
+
+// ── Soft-delete query middleware ─────────────────────────────────
+// Automatically exclude soft-deleted users from all find queries
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+userSchema.pre(/^find/, function (this: any) {
+  if (this.getFilter().deletedAt === undefined) {
+    this.where({ deletedAt: null });
+  }
+});
 
 const UserModel = mongoose.model<IUserDocument>("User", userSchema);
 

@@ -1,60 +1,64 @@
 // ─────────────────────────────────────────────────────────────────
 // Standard API Response Wrapper
 // Every endpoint MUST return { success, data, message, errorCode? }.
-// Controllers never pass raw message strings — only an ErrorCode + req.
+// Controllers never pass raw message strings — only SuccessCode/ErrorCode + req.
 // ─────────────────────────────────────────────────────────────────
 
 import { Request, Response } from "express";
-import { ApiResponse, ErrorCode, getErrorMessage } from "../types";
+import {
+  ApiResponse,
+  ErrorCode,
+  getErrorMessage,
+  SuccessCode,
+  getSuccessMessage,
+} from "../types";
 
 // ── getLang ────────────────────────────────────────────────────────
-// Determines UI language from authenticated user pref or Accept-Language header.
+// Determines UI language from Accept-Language header.
 // Default: 'ar' (Egyptian Arabic) — never assume English.
 
-export function getLang(req: Request): "ar" | "en" {
-  // req.user is typed as IUserDocument via Express.Request augmentation in auth.middleware.ts
-  const userLang = req.user?.lang;
-  if (userLang === "ar" || userLang === "en") return userLang;
-
-  const acceptLang = req.headers["accept-language"]?.slice(0, 2);
-  if (acceptLang === "en") return "en";
-
-  return "ar"; // default
+export function getLang(req?: Request): "ar" | "en" {
+  const raw = req?.headers?.["accept-language"];
+  const header = typeof raw === "string" ? raw : "ar";
+  return header.startsWith("en") ? "en" : "ar";
 }
 
 // ── Success Helpers ───────────────────────────────────────────────
 
-function sendSuccess<T>(
+export function sendSuccess<T>(
   res: Response,
   data: T,
-  message: string = "Success",
-  statusCode: number = 200,
+  statusCode = 200,
+  successCode: SuccessCode = SuccessCode.Ok,
+  req?: Request,
 ): void {
+  const lang = getLang(req);
   const response: ApiResponse<T> = {
     success: true,
     data,
-    message,
+    message: getSuccessMessage(successCode, lang),
   };
   res.status(statusCode).json(response);
 }
 
-function sendCreated<T>(
+export function sendCreated<T>(
   res: Response,
   data: T,
-  message: string = "Created successfully",
+  successCode: SuccessCode = SuccessCode.Created,
+  req?: Request,
 ): void {
-  sendSuccess(res, data, message, 201);
+  sendSuccess(res, data, 201, successCode, req);
 }
 
 // ── Error Helper ─────────────────────────────────────────────────
 // Controllers call: sendError(res, 404, ErrorCode.NotFound, req)
 // Message is auto-populated from ERROR_MESSAGES in the user's language.
 
-function sendError(
+export function sendError(
   res: Response,
   statusCode: number,
   errorCode: ErrorCode,
-  req: Request,
+  req?: Request,
   data: unknown = null,
 ): void {
   const lang = getLang(req);
@@ -68,5 +72,3 @@ function sendError(
   };
   res.status(statusCode).json(response);
 }
-
-export { sendSuccess, sendError, sendCreated };

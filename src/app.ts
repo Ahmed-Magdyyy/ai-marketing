@@ -13,6 +13,7 @@ import clientRoutes from "./modules/client/client.routes";
 import brandRoutes from "./modules/brand/brand.routes";
 import { uploadRouter } from "./modules/upload/upload.routes";
 import agentRoutes from "./modules/agent/agent.routes";
+import adminRoutes from "./modules/admin/admin.routes";
 
 function createApp(): Application {
   const app: Application = express();
@@ -41,6 +42,7 @@ function createApp(): Application {
   app.use("/api/brand", brandRoutes);
   app.use("/api/upload", uploadRouter);
   app.use("/api/agent", agentRoutes);
+  app.use("/api/admin", adminRoutes);
 
   // ── 404 + Error Handler ─────────────────────────────────────────
   app.use(notFoundHandler);

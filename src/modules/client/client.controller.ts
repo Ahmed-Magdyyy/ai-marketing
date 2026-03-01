@@ -3,7 +3,7 @@ import { clientService } from "./client.service";
 import { asyncHandler } from "../../shared/utils/asyncHandler";
 import { sendSuccess, sendError } from "../../shared/utils/apiResponse";
 import { IUserDocument } from "../auth/user.model";
-import { ErrorCode } from "../../shared/types";
+import { ErrorCode, SuccessCode } from "../../shared/types";
 
 export const getProfile = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
@@ -11,7 +11,7 @@ export const getProfile = asyncHandler(
 
     try {
       const profile = await clientService.getProfile(user._id.toString());
-      return sendSuccess(res, profile);
+      return sendSuccess(res, profile, 200, SuccessCode.Ok, req);
     } catch (error: unknown) {
       if (error instanceof Error && "statusCode" in error) {
         const err = error as { statusCode: number; errorCode?: ErrorCode };
@@ -36,7 +36,13 @@ export const updateProfile = asyncHandler(
         user._id.toString(),
         req.body,
       );
-      return sendSuccess(res, updatedProfile);
+      return sendSuccess(
+        res,
+        updatedProfile,
+        200,
+        SuccessCode.ProfileUpdated,
+        req,
+      );
     } catch (error: unknown) {
       if (error instanceof Error && "statusCode" in error) {
         const err = error as { statusCode: number; errorCode?: ErrorCode };
@@ -58,7 +64,7 @@ export const deleteProfile = asyncHandler(
 
     try {
       await clientService.deleteProfile(user._id.toString());
-      return sendSuccess(res, null, "Account deleted successfully");
+      return sendSuccess(res, null, 200, SuccessCode.Deleted, req);
     } catch (error: unknown) {
       if (error instanceof Error && "statusCode" in error) {
         const err = error as { statusCode: number; errorCode?: ErrorCode };

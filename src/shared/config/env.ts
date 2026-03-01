@@ -36,6 +36,16 @@ interface EnvConfig {
   KILL_CONTENT: boolean;
   KILL_ALL: boolean;
 
+  // Email (required at runtime for system signup, not at startup)
+  EMAIL_HOST: string;
+  EMAIL_PORT: number;
+  EMAIL_USER: string;
+  EMAIL_PASSWORD: string;
+
+  // Google OAuth
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+
   // Object Storage — provider-agnostic
   STORAGE_PROVIDER: "r2" | "b2";
 
@@ -101,6 +111,16 @@ function validateEnv(): EnvConfig {
     // Security
     TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY || "",
     TOKEN_ENCRYPTION_KEY_PREV: process.env.TOKEN_ENCRYPTION_KEY_PREV || "",
+
+    // Email (validated at runtime when email is needed)
+    EMAIL_HOST: process.env.EMAIL_HOST || "",
+    EMAIL_PORT: parseInt(process.env.EMAIL_PORT || "587", 10),
+    EMAIL_USER: process.env.EMAIL_USER || "",
+    EMAIL_PASSWORD: process.env.EMAIL_PASSWORD || "",
+
+    // Google OAuth
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || "",
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || "",
 
     // Kill Switches
     KILL_DEEP_RESEARCH: process.env.KILL_DEEP_RESEARCH === "true",

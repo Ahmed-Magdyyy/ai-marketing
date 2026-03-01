@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "../../shared/utils/asyncHandler";
 import { sendSuccess, sendError } from "../../shared/utils/apiResponse";
-import { ErrorCode, IBrandProfile } from "../../shared/types";
+import { ErrorCode, IBrandProfile, SuccessCode } from "../../shared/types";
 import { chat } from "./agent.service";
 import { BrandProfileModel } from "../brand/brand.model";
 
@@ -52,5 +52,11 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
     socketId,
   );
 
-  return sendSuccess(res, { reply, inputTokens, outputTokens });
+  return sendSuccess(
+    res,
+    { reply, inputTokens, outputTokens },
+    200,
+    SuccessCode.Ok,
+    req,
+  );
 });

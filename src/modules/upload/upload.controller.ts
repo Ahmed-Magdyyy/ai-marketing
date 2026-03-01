@@ -1,9 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import { UploadService } from "./upload.service";
 import { UploadedFileModel } from "./upload.model";
-import { sendSuccess } from "../../shared/utils/apiResponse";
+import { sendCreated } from "../../shared/utils/apiResponse";
 import { ApiError } from "../../shared/utils/ApiError";
-import { ErrorCode } from "../../shared/types";
+import { ErrorCode, SuccessCode } from "../../shared/types";
 import { logger } from "../../shared/utils/logger";
 
 export class UploadController {
@@ -85,7 +85,7 @@ export class UploadController {
         `User ${authUser._id.toString()} uploaded ${files.length} files successfully.`,
       );
 
-      sendSuccess(res, uploadResults, "Files uploaded successfully.");
+      sendCreated(res, uploadResults, SuccessCode.Created, req);
     } catch (error) {
       next(error);
     }

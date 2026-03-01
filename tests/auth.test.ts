@@ -40,21 +40,21 @@ describe("Auth Endpoints API Test", () => {
     expect(res.body.success).toBe(false);
   });
 
-  it("should login successfully and return tokens", async () => {
+  it("should reject login for unverified user", async () => {
+    // Register (user starts inactive + unverified)
     const regRes = await request(app)
       .post("/api/auth/register")
       .send(validUser);
-    expect(regRes.status).toBe(201); // Ensure register actually succeeds first
+    expect(regRes.status).toBe(201);
 
+    // Login should fail because email is not verified
     const res = await request(app).post("/api/auth/login").send({
       email: validUser.email,
       password: validUser.password,
     });
 
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data.accessToken).toBeDefined();
-    expect(res.headers["set-cookie"][0]).toContain("refreshToken=");
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
   });
 
   it("should reject login with wrong password", async () => {

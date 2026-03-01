@@ -90,6 +90,17 @@ export interface UserUsage {
   resetAt: Date;
 }
 
+export type UserStatus = "active" | "inactive" | "suspended" | "banned";
+
+export type SignupProvider = "email" | "google";
+
+export interface IAuthProvider {
+  provider: "google"; // extensible — add 'facebook' | 'apple' etc. later
+  providerUserId: string;
+  providerEmail: string;
+  linkedAt: Date;
+}
+
 export interface IUser {
   _id: string;
   email: string;
@@ -104,6 +115,17 @@ export interface IUser {
   refreshToken?: string;
   createdAt: Date;
   lastLoginAt: Date;
+
+  // Enhanced auth
+  isEmailVerified: boolean;
+  status: UserStatus;
+  statusReason: string;
+  statusChangedAt?: Date;
+  statusChangedBy?: string; // admin userId
+  signupProvider: SignupProvider;
+  authProviders: IAuthProvider[];
+  passwordChangedAt?: Date;
+  deletedAt?: Date | null;
 }
 
 // ── Brand Profile ────────────────────────────────────────────────
@@ -298,6 +320,24 @@ export enum ErrorCode {
   Unauthorized = "AUTH_UNAUTHORIZED",
   Forbidden = "AUTH_FORBIDDEN",
 
+  // Email & OTP
+  EmailNotVerified = "EMAIL_NOT_VERIFIED",
+  OtpExpired = "OTP_EXPIRED",
+  OtpInvalid = "OTP_INVALID",
+  OtpResendLimit = "OTP_RESEND_LIMIT",
+
+  // Password Reset
+  PasswordResetTokenInvalid = "PASSWORD_RESET_TOKEN_INVALID",
+
+  // Google OAuth
+  GoogleAuthFailed = "GOOGLE_AUTH_FAILED",
+  GoogleAuthRequired = "GOOGLE_AUTH_REQUIRED",
+
+  // Account Status
+  AccountSuspended = "ACCOUNT_SUSPENDED",
+  AccountBanned = "ACCOUNT_BANNED",
+  AccountInactive = "ACCOUNT_INACTIVE",
+
   // Validation & Resources
   ValidationError = "VALIDATION_ERROR",
   NotFound = "RESOURCE_NOT_FOUND",
@@ -357,6 +397,54 @@ export const ERROR_MESSAGES: Record<ErrorCode, { ar: string; en: string }> = {
     en: "You do not have permission to do this.",
   },
 
+  // Email & OTP
+  [ErrorCode.EmailNotVerified]: {
+    ar: "لازم تأكد الإيميل الأول. دور على كود التفعيل في الإيميل.",
+    en: "Please verify your email first. Check your inbox for the verification code.",
+  },
+  [ErrorCode.OtpExpired]: {
+    ar: "كود التفعيل انتهت صلاحيته. اطلب كود جديد.",
+    en: "Verification code has expired. Please request a new one.",
+  },
+  [ErrorCode.OtpInvalid]: {
+    ar: "كود التفعيل غلط. حاول تاني.",
+    en: "Invalid verification code. Please try again.",
+  },
+  [ErrorCode.OtpResendLimit]: {
+    ar: "وصلت لأقصى عدد محاولات إرسال الكود. حاول بعد ساعة.",
+    en: "Maximum resend attempts reached. Please try again in an hour.",
+  },
+
+  // Password Reset
+  [ErrorCode.PasswordResetTokenInvalid]: {
+    ar: "رابط تغيير الباسورد مش صحيح أو انتهت صلاحيته.",
+    en: "Password reset link is invalid or has expired.",
+  },
+
+  // Google OAuth
+  [ErrorCode.GoogleAuthFailed]: {
+    ar: "تسجيل الدخول بجوجل فشل. حاول تاني.",
+    en: "Google authentication failed. Please try again.",
+  },
+  [ErrorCode.GoogleAuthRequired]: {
+    ar: "الحساب ده مربوط بجوجل. سجل دخول بجوجل بدل الإيميل والباسورد.",
+    en: "This account uses Google Sign-In. Please log in with Google instead of email and password.",
+  },
+
+  // Account Status
+  [ErrorCode.AccountSuspended]: {
+    ar: "الحساب متوقف مؤقتاً. تواصل مع الدعم.",
+    en: "Your account has been suspended. Please contact support.",
+  },
+  [ErrorCode.AccountBanned]: {
+    ar: "الحساب ده محظور. تواصل مع الدعم لو في غلط.",
+    en: "Your account has been banned. Contact support if you believe this is an error.",
+  },
+  [ErrorCode.AccountInactive]: {
+    ar: "الحساب ده مش نشط. تواصل مع الدعم.",
+    en: "Your account is inactive. Please contact support.",
+  },
+
   // Validation & Resources
   [ErrorCode.ValidationError]: {
     ar: "في بيانات ناقصة أو غلط. راجعها وحاول تاني.",
@@ -367,8 +455,8 @@ export const ERROR_MESSAGES: Record<ErrorCode, { ar: string; en: string }> = {
     en: "The requested resource was not found.",
   },
   [ErrorCode.AlreadyExists]: {
-    ar: "الحاجة دي موجودة بالفعل.",
-    en: "This already exists.",
+    ar: "موجود بالفعل.",
+    en: "Already exists.",
   },
 
   // Plan & Quota
@@ -439,6 +527,108 @@ export function getErrorMessage(
   return (
     ERROR_MESSAGES[code]?.[lang] ??
     ERROR_MESSAGES[ErrorCode.InternalError][lang]
+  );
+}
+
+// ── Success Codes ────────────────────────────────────────────────
+
+export enum SuccessCode {
+  Ok = "OK",
+  Created = "CREATED",
+  LoggedIn = "LOGGED_IN",
+  LoggedOut = "LOGGED_OUT",
+  ProfileUpdated = "PROFILE_UPDATED",
+  Deleted = "DELETED",
+  EmailVerified = "EMAIL_VERIFIED",
+  OtpSent = "OTP_SENT",
+  PasswordResetVerified = "PASSWORD_RESET_VERIFIED",
+  PasswordReset = "PASSWORD_RESET",
+  PasswordChanged = "PASSWORD_CHANGED",
+  GoogleLinked = "GOOGLE_LINKED",
+  GoogleUnlinked = "GOOGLE_UNLINKED",
+  UserSuspended = "USER_SUSPENDED",
+  UserActivated = "USER_ACTIVATED",
+  AccountDeleted = "ACCOUNT_DELETED",
+  PasswordResetByAdmin = "PASSWORD_RESET_BY_ADMIN",
+}
+
+const SUCCESS_MESSAGES: Record<SuccessCode, { ar: string; en: string }> = {
+  [SuccessCode.Ok]: {
+    ar: "تمت العملية بنجاح",
+    en: "Success",
+  },
+  [SuccessCode.Created]: {
+    ar: "تم الإنشاء بنجاح",
+    en: "Created successfully",
+  },
+  [SuccessCode.LoggedIn]: {
+    ar: "تم تسجيل الدخول بنجاح",
+    en: "Welcome back!",
+  },
+  [SuccessCode.LoggedOut]: {
+    ar: "تم تسجيل الخروج بنجاح",
+    en: "Logged out successfully",
+  },
+  [SuccessCode.ProfileUpdated]: {
+    ar: "تم تحديث الملف الشخصي بنجاح",
+    en: "Profile updated successfully",
+  },
+  [SuccessCode.Deleted]: {
+    ar: "تم الحذف بنجاح",
+    en: "Deleted successfully",
+  },
+  [SuccessCode.EmailVerified]: {
+    ar: "تم تأكيد الإيميل بنجاح",
+    en: "Email verified successfully",
+  },
+  [SuccessCode.OtpSent]: {
+    ar: "تم إرسال كود التفعيل لإيميلك",
+    en: "Verification code sent to your email",
+  },
+  [SuccessCode.PasswordResetVerified]: {
+    ar: "تم التحقق من الكود. استخدم التوكن لتغيير الباسورد.",
+    en: "OTP verified. Use the reset token to set a new password.",
+  },
+  [SuccessCode.PasswordReset]: {
+    ar: "تم تغيير الباسورد بنجاح. ادخل بالباسورد الجديد.",
+    en: "Password reset successfully. Please log in with your new password.",
+  },
+  [SuccessCode.PasswordChanged]: {
+    ar: "تم تغيير الباسورد بنجاح",
+    en: "Password changed successfully",
+  },
+  [SuccessCode.GoogleLinked]: {
+    ar: "تم ربط حساب جوجل بنجاح",
+    en: "Google account linked successfully",
+  },
+  [SuccessCode.GoogleUnlinked]: {
+    ar: "تم فصل حساب جوجل بنجاح",
+    en: "Google account unlinked successfully",
+  },
+  [SuccessCode.UserSuspended]: {
+    ar: "تم إيقاف المستخدم",
+    en: "User suspended",
+  },
+  [SuccessCode.UserActivated]: {
+    ar: "تم تفعيل المستخدم",
+    en: "User activated",
+  },
+  [SuccessCode.AccountDeleted]: {
+    ar: "تم حذف الحساب نهائياً",
+    en: "Account permanently deleted",
+  },
+  [SuccessCode.PasswordResetByAdmin]: {
+    ar: "تم إعادة تعيين كلمة المرور بواسطة الأدمن",
+    en: "Password has been reset by admin",
+  },
+};
+
+export function getSuccessMessage(
+  code: SuccessCode,
+  lang: "ar" | "en" = "ar",
+): string {
+  return (
+    SUCCESS_MESSAGES[code]?.[lang] ?? SUCCESS_MESSAGES[SuccessCode.Ok][lang]
   );
 }
 

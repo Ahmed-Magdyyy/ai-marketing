@@ -278,6 +278,14 @@ project-root/
         auth.controller.ts
         auth.service.ts
         auth.middleware.ts
+        auth.validation.ts
+        google.utils.ts       ← Google OAuth token verification (verifyGoogleToken → GoogleUserInfo)
+        user.model.ts
+      admin/
+        admin.routes.ts       ← all routes require authMiddleware + adminMiddleware
+        admin.controller.ts
+        admin.service.ts
+        admin.middleware.ts   ← requireAdmin role check
       client/
         client.routes.ts
         client.controller.ts
@@ -350,6 +358,8 @@ project-root/
         sanitizeScrape.ts     ← strips prompt-injection vectors from scraped HTML before AI
         alerting.ts           ← Slack alert webhook wrapper
         aiCostTracker.ts      ← token + unit cost logging (loads model-costs.json)
+        email.service.ts      ← Nodemailer transporter + bilingual OTP/reset email templates
+        otp.utils.ts          ← Redis-backed OTP generate/verify/resend (SHA256-hashed storage)
     app.ts
     server.ts
   scripts/
@@ -888,6 +898,31 @@ If a new AI capability is needed (e.g. speech-to-text for client voice notes):
 {
   email, passwordHash, name, phone,
   lang: String,           // 'ar' | 'en' — UI language preference (default: 'ar')
+
+  // ── Email verification & account status ──────────────────────
+  isEmailVerified: Boolean,   // default: false — must verify before login allowed
+  status: String,             // 'active' | 'inactive' | 'suspended' | 'banned' (default: 'inactive')
+  statusReason: String,       // admin note explaining why status changed
+  statusChangedAt: Date,
+  statusChangedBy: ObjectId,  // admin userId who made the change
+
+  // ── OAuth ─────────────────────────────────────────────────────
+  signupProvider: String,     // 'system' | 'google' (default: 'system')
+  authProviders: [{           // extensible — add 'apple', 'facebook' etc. here
+    provider: String,         // 'google'
+    providerUserId: String,   // Google sub ID
+    email: String,            // email from provider
+    linkedAt: Date
+  }],
+  // Compound sparse unique index: authProviders.provider + authProviders.providerUserId
+
+  // ── Password tracking ─────────────────────────────────────────
+  passwordChangedAt: Date,    // set on every password change — invalidates older JWTs
+
+  // ── Soft delete ───────────────────────────────────────────────
+  deletedAt: Date,            // null = not deleted. Pre-hook excludes these from all find queries.
+  // Hard delete: cascades AiUsageLog → ConversationMessage → UploadedFiles (+ R2 objects) → BrandProfile → User
+
   plan: {
     tier: String,          // 'free' | 'starter' | 'growth' | 'agency' | 'custom'
     billingCycle: String,  // 'monthly' | 'annual'
@@ -922,6 +957,16 @@ If a new AI capability is needed (e.g. speech-to-text for client voice notes):
   createdAt, lastLoginAt
 }
 ```
+
+**User status model:**
+| Status | Default for | Reversible | Login blocked | Use case |
+|--------|------------|------------|---------------|----------|
+| `inactive` | all new registrations | yes, by admin | until email verified, then unblocked | pre-verification state |
+| `active` | after email verified | — | no | normal access |
+| `suspended` | admin action | yes | yes | under investigation |
+| `banned` | admin action | super-admin only | yes | fraud/permanent |
+
+**Soft delete pre-hook:** `userSchema.pre(/^find/, ...)` automatically excludes `deletedAt: { $ne: null }` from all queries. Admin bypasses this using `UserModel.collection.findOne()` directly.
 
 ### UploadedFile
 ```js
@@ -1604,6 +1649,18 @@ export enum ErrorCode {
   Unauthorized            = 'AUTH_UNAUTHORIZED',
   Forbidden               = 'AUTH_FORBIDDEN',
 
+  // Enhanced Auth
+  EmailNotVerified        = 'EMAIL_NOT_VERIFIED',
+  OtpExpired              = 'OTP_EXPIRED',
+  OtpInvalid              = 'OTP_INVALID',
+  OtpResendLimit          = 'OTP_RESEND_LIMIT',
+  PasswordResetTokenInvalid = 'PASSWORD_RESET_TOKEN_INVALID',
+  GoogleAuthFailed        = 'GOOGLE_AUTH_FAILED',
+  GoogleAuthRequired      = 'GOOGLE_AUTH_REQUIRED',  // user exists with Google only, tried email/password login
+  AccountSuspended        = 'ACCOUNT_SUSPENDED',
+  AccountBanned           = 'ACCOUNT_BANNED',
+  AccountInactive         = 'ACCOUNT_INACTIVE',
+
   // Validation & Resources
   ValidationError         = 'VALIDATION_ERROR',
   NotFound                = 'RESOURCE_NOT_FOUND',
@@ -1644,6 +1701,18 @@ export const ERROR_MESSAGES: Record<ErrorCode, { ar: string; en: string }> = {
   [ErrorCode.Unauthorized]:        { ar: 'محتاج تسجل دخول الأول.',                                        en: 'You must be logged in to do this.' },
   [ErrorCode.Forbidden]:           { ar: 'مش مسموحلك تعمل ده.',                                            en: 'You do not have permission to do this.' },
 
+  // Enhanced Auth
+  [ErrorCode.EmailNotVerified]:           { ar: 'لازم تأكد إيميلك الأول. اتحقق من صندوق الوارد.',          en: 'Please verify your email first. Check your inbox.' },
+  [ErrorCode.OtpExpired]:                 { ar: 'الكود انتهت صلاحيته. اطلب كود جديد.',                     en: 'The code has expired. Please request a new one.' },
+  [ErrorCode.OtpInvalid]:                 { ar: 'الكود غلط. تأكد وحاول تاني.',                             en: 'Invalid code. Please check and try again.' },
+  [ErrorCode.OtpResendLimit]:             { ar: 'بعتنا كتير. استنى ساعة وحاول تاني.',                      en: 'Too many resend attempts. Please wait an hour and try again.' },
+  [ErrorCode.PasswordResetTokenInvalid]:  { ar: 'رابط إعادة التعيين غلط أو انتهى. اطلب جديد.',            en: 'Reset token is invalid or expired. Please request a new one.' },
+  [ErrorCode.GoogleAuthFailed]:           { ar: 'فشل التحقق من حساب Google. حاول تاني.',                   en: 'Google authentication failed. Please try again.' },
+  [ErrorCode.GoogleAuthRequired]:         { ar: 'الحساب ده مرتبط بـ Google. سجل دخول بـ Google أو استخدم نسيت الباسورد عشان تضيف باسورد.', en: 'This account uses Google login. Sign in with Google or use forgot password to set a password.' },
+  [ErrorCode.AccountSuspended]:           { ar: 'حسابك متوقف مؤقتاً. تواصل مع الدعم.',                    en: 'Your account is temporarily suspended. Contact support.' },
+  [ErrorCode.AccountBanned]:              { ar: 'حسابك محظور. تواصل مع الدعم.',                            en: 'Your account has been banned. Contact support.' },
+  [ErrorCode.AccountInactive]:            { ar: 'حسابك مش نشط. تأكد من إيميلك.',                           en: 'Your account is inactive. Please verify your email.' },
+
   // Validation & Resources
   [ErrorCode.ValidationError]:     { ar: 'في بيانات ناقصة أو غلط. راجعها وحاول تاني.',                   en: 'Some fields are missing or invalid. Please check and try again.' },
   [ErrorCode.NotFound]:            { ar: 'مش لاقيين اللي بتدور عليه.',                                    en: 'The requested resource was not found.' },
@@ -1682,6 +1751,52 @@ export interface AgentToolResult {
   success: boolean
   data: unknown
   error?: string
+}
+
+// ── Auth ──────────────────────────────────────────────────────────
+export type SignupProvider = 'system' | 'google'
+export type UserStatus = 'active' | 'inactive' | 'suspended' | 'banned'
+
+export interface IAuthProvider {
+  provider: 'google'           // extend union when adding Apple, Facebook, etc.
+  providerUserId: string       // provider's unique ID (Google sub)
+  email?: string               // email from provider
+  linkedAt: Date
+}
+
+// ── User (base interface — user.model.ts extends this as IUserDocument) ───
+export interface IUser {
+  _id: string
+  email: string
+  passwordHash: string
+  name: string
+  phone?: string
+  lang: 'ar' | 'en'
+  role: UserRole
+
+  // Email verification & status
+  isEmailVerified: boolean
+  status: UserStatus
+  statusReason?: string
+  statusChangedAt?: Date
+  statusChangedBy?: string     // admin userId
+
+  // OAuth
+  signupProvider: SignupProvider
+  authProviders: IAuthProvider[]
+
+  // Password
+  passwordChangedAt?: Date
+
+  // Soft delete
+  deletedAt: Date | null
+
+  plan: UserPlan
+  limits: PlanLimits
+  usage: UserUsage
+  refreshToken?: string
+  lastLoginAt?: Date
+  createdAt: Date
 }
 ```
 
@@ -3024,23 +3139,66 @@ Tasks:
 18. Test all auth endpoints
 
 **Definition of Done:**
-- `POST /api/auth/register` returns JWT, user saved in MongoDB with hashed password
-- `POST /api/auth/login` returns JWT + refresh token
+- `POST /api/auth/register` — creates user (status: inactive), sends OTP email, returns `{ userId, email }` (no tokens — must verify email first)
+- `POST /api/auth/verify-email` — `{ userId, otp }` → activates account, returns tokens
+- `POST /api/auth/resend-otp` — `{ userId, purpose: 'verify' | 'reset' }` → resends OTP (max 3/hour)
+- `POST /api/auth/login` — blocked if `isEmailVerified: false`; returns tokens if active
 - `POST /api/auth/refresh` returns new JWT from valid refresh token
-- Protected route returns 401 on missing or expired token
+- `POST /api/auth/logout` invalidates refresh token
+- `POST /api/auth/forgot-password` — `{ email }` → sends OTP (silent if email not found)
+- `POST /api/auth/verify-reset-otp` — `{ email, otp }` → returns short-lived `resetToken` (5 min JWT)
+- `POST /api/auth/reset-password` — `{ resetToken, newPassword }`
+- `POST /api/auth/change-password` — (auth) `{ currentPassword, newPassword }`
+- `POST /api/auth/google/auth` — `{ idToken }` → login or register via Google
+- `POST /api/auth/google/link` — (auth) links Google to existing account
+- `POST /api/auth/google/unlink` — (auth) unlinks Google (blocked if no password set)
 - `GET /api/health` returns `{ status: "ok" }` with DB connectivity, Redis connectivity, and active kill switches listed
+- Protected route returns 401 on missing or expired token
 - `getModel('AGENT_REASONING')` returns `'claude-opus-4-6'` by default; setting `MODEL_AGENT_REASONING=claude-sonnet-4-6` in env changes it without code edits
 - `getReasoningModel()` returns Sonnet when `KILL_OPUS=true` is set in env
 - Setting `KILL_DEEP_RESEARCH=true` causes any route using that kill switch to return 503
 - `tsc --noEmit` runs with zero errors on the project
-- `npm test` runs (even if zero tests yet) — Jest configured and working
-- `rateLimiter.ts` exists and auth routes are protected (test: 11 rapid login attempts → 10 succeed, 11th returns 429)
-- `rateLimiter.ts` exports `fileUploadLimiter` — the route it protects (`POST /api/upload`) is built in Phase 3, but the limiter is defined now
+- `npm test` runs — Jest configured and working, 15 tests passing
+- `rateLimiter.ts` exists and auth routes are protected — `skip: () => ['development', 'test'].includes(process.env.NODE_ENV ?? '')` on all limiters
 - All functions have explicit TypeScript return types; no `any` anywhere
 - No model strings hardcoded anywhere
-- `planLimits.ts` exports `getPlanLimits(PlanTier.Free)` and `getPlanLimits(PlanTier.Starter)` without error
-- `aiCostTracker.ts` loads `model-costs.json` at startup without error
-- `AiUsageLog` collection is present in MongoDB after server start (Mongoose auto-creates on first write — verify after calling `trackTokenUsage()` manually in a test)
+- OTPs are SHA256-hashed before Redis storage — never stored in plain text
+- `AiUsageLog` collection is present in MongoDB after server start
+
+---
+
+### ADMIN MODULE (built as part of Phase 1 auth enhancement)
+
+All routes require `authMiddleware` + `adminMiddleware` (checks `role === UserRole.Admin`).
+
+```
+GET    /api/admin/users                    list users (page, limit, status, search filters)
+GET    /api/admin/users/:userId            get user by id (bypasses soft-delete filter)
+PATCH  /api/admin/users/:userId/status     { status, reason? } — sets statusReason/statusChangedAt/statusChangedBy
+PATCH  /api/admin/users/:userId/password   { newPassword } — admin override, no current password needed
+DELETE /api/admin/users/:userId            soft delete — sets deletedAt, status → inactive
+DELETE /api/admin/users/:userId/hard       hard delete — requires { confirm: "DELETE_PERMANENTLY" } in body
+```
+
+Hard delete cascade order: `AiUsageLog` → `ConversationMessage` → `UploadedFile` (+ R2/B2 objects) → `BrandProfile` → `User`
+
+Log BEFORE hard delete: `logger.warn('admin_hard_delete_user', { adminId, userId })`
+
+### OTP PATTERN (Redis-backed)
+
+```
+Key:     otp:{purpose}:{userId}       TTL: 10 minutes
+Value:   SHA256(otp)                  ← never store plain OTP
+Purpose: 'verify' | 'reset'
+
+Resend tracking:
+Key:     otp:resend:{purpose}:{userId}  TTL: 1 hour
+Value:   count (max 3 per hour)
+```
+
+- `generateAndStoreOtp(userId, purpose)` — generates 6-digit OTP, stores hash, returns plain OTP to caller for emailing
+- `verifyOtp(userId, purpose, candidate)` — hashes candidate, compares, deletes key on success (one-time use)
+- OTP email is fire-and-forget on register — failure logged via `logger.error('otp_send_failed_on_register', ...)`, never throws
 
 ---
 
@@ -3601,6 +3759,16 @@ SENTRY_DSN=            # Sentry DSN for error tracking — wire in Phase 9
 
 # App
 FRONTEND_URL=http://localhost:3001
+
+# Email (Nodemailer SMTP — Gmail for dev, Resend/SES for prod)
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=465
+EMAIL_USER=                  # Gmail address or SMTP username
+EMAIL_PASSWORD=              # Gmail App Password (16 chars, no spaces) or SMTP password
+
+# Google OAuth
+GOOGLE_CLIENT_ID=            # from Google Cloud Console — used to verify idToken
+GOOGLE_CLIENT_SECRET=        # only needed if using server-side OAuth flow
 ```
 
 ---

@@ -1,8 +1,12 @@
 import { Request, Response } from "express";
 import { brandService } from "./brand.service";
 import { asyncHandler } from "../../shared/utils/asyncHandler";
-import { ErrorCode } from "../../shared/types";
-import { sendSuccess, sendError } from "../../shared/utils/apiResponse";
+import { ErrorCode, SuccessCode } from "../../shared/types";
+import {
+  sendSuccess,
+  sendCreated,
+  sendError,
+} from "../../shared/utils/apiResponse";
 import { IUserDocument } from "../auth/user.model";
 
 export const createBrand = asyncHandler(
@@ -33,7 +37,7 @@ export const createBrand = asyncHandler(
         brandDNA,
       });
 
-      return sendSuccess(res, newBrand, "Created successfully", 201);
+      return sendCreated(res, newBrand, SuccessCode.Created, req);
     } catch (error: unknown) {
       if (error instanceof Error && "statusCode" in error) {
         const err = error as { statusCode: number; errorCode?: ErrorCode };
@@ -66,7 +70,7 @@ export const updateBrand = asyncHandler(
         req.body,
       );
 
-      return sendSuccess(res, updatedBrand);
+      return sendSuccess(res, updatedBrand, 200, SuccessCode.Ok, req);
     } catch (error: unknown) {
       if (error instanceof Error && "statusCode" in error) {
         const err = error as { statusCode: number; errorCode?: ErrorCode };
@@ -94,7 +98,7 @@ export const getBrand = asyncHandler(
 
     try {
       const brand = await brandService.getBrand(userId, brandId);
-      return sendSuccess(res, brand);
+      return sendSuccess(res, brand, 200, SuccessCode.Ok, req);
     } catch (error: unknown) {
       if (error instanceof Error && "statusCode" in error) {
         const err = error as { statusCode: number; errorCode?: ErrorCode };

@@ -1,4 +1,8 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+} from "@aws-sdk/client-s3";
 import { logger } from "../utils/logger";
 
 // ── Storage Provider Abstraction ──────────────────────────────────
@@ -142,6 +146,28 @@ async function uploadToStorage(
   }
 }
 
+/**
+ * Deletes an object from storage (R2 or B2) by its key.
+ */
+async function deleteFromStorage(key: string): Promise<void> {
+  const client = getStorageClient();
+  const bucket = getStorageBucket();
+
+  try {
+    const command = new DeleteObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    });
+
+    await client.send(command);
+    logger.debug(`Deleted ${key} from ${storageConfig!.provider}`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    logger.error(`Storage delete failed (${key}): ${message}`);
+    throw new Error(`Storage delete failed: ${message}`);
+  }
+}
+
 // ── Backward-compat exports ───────────────────────────────────────
 // Existing code using getR2Client / uploadToR2 still works.
 export const getR2Client = getStorageClient;
@@ -149,4 +175,9 @@ export const uploadToR2 = uploadToStorage;
 export const R2_BUCKET = process.env.R2_BUCKET || process.env.B2_BUCKET || "";
 
 // ── Preferred exports (provider-agnostic naming) ──────────────────
-export { getStorageClient, getStorageBucket, uploadToStorage };
+export {
+  getStorageClient,
+  getStorageBucket,
+  uploadToStorage,
+  deleteFromStorage,
+};
