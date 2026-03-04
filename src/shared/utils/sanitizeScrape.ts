@@ -19,7 +19,7 @@ const INJECTION_PATTERNS: RegExp[] = [
   /<<\s*SYS\s*>>/gi,
   /\bact\s+as\b/gi,
   /pretend\s+you\s+are/gi,
-  /do\s+not\s+follow\s+(your|the)\s+(previous|original)/gi,
+  /do\s+not\s+follow\b[^.!?\n]*/gi,
 ];
 
 /**
