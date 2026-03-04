@@ -40,31 +40,9 @@ export const registerHandler = asyncHandler(
       );
     }
 
-    const { user, tokens } = await authService.register(value);
+    const { userId, email } = await authService.register(value);
 
-    // Set refresh token as httpOnly cookie
-    res.cookie("refreshToken", tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
-
-    return sendCreated(
-      res,
-      {
-        user: {
-          id: user._id,
-          email: user.email,
-          name: user.name,
-          lang: user.lang,
-          plan: user.plan,
-        },
-        accessToken: tokens.accessToken,
-      },
-      SuccessCode.Created,
-      req,
-    );
+    return sendCreated(res, { userId, email }, SuccessCode.Created, req);
   },
 );
 
@@ -127,7 +105,7 @@ export const verifyEmailHandler = asyncHandler(
       );
     }
 
-    await authService.verifyEmail(value.userId, value.otp);
+    await authService.verifyEmail(value.email, value.otp);
 
     return sendSuccess(res, null, 200, SuccessCode.EmailVerified, req);
   },
@@ -149,7 +127,7 @@ export const resendOtpHandler = asyncHandler(
     }
 
     const lang = getLang(req);
-    await authService.resendVerificationOtp(value.userId, lang);
+    await authService.resendVerificationOtp(value.email, lang);
 
     return sendSuccess(res, null, 200, SuccessCode.OtpSent, req);
   },

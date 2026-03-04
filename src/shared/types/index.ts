@@ -154,6 +154,54 @@ export interface CompetitorInfo {
   analyzedAt: Date;
 }
 
+// ── Research / Scraping Interfaces ───────────────────────────────
+
+export interface ScrapeOptions {
+  url: string;
+  tier?: ScrapingTier; // defaults to Fast (1)
+  timeout?: number; // ms, defaults to 15_000
+  waitSelector?: string; // CSS selector to wait for (Dynamic/Stealth/Puppeteer only)
+}
+
+export interface ScrapeResult {
+  url: string;
+  title: string;
+  bodyText: string; // sanitized via sanitizeScrape()
+  metaDescription: string;
+  headings: string[];
+  tier: ScrapingTier; // which tier actually succeeded
+  scrapedAt: Date;
+}
+
+export interface CrawlItem {
+  url: string;
+  title: string;
+  headings: string[];
+  bodyText: string;
+  metaDescription: string;
+  internalLinks: string[];
+  pageNumber: number;
+  crawlId: string;
+}
+
+export interface IResearchJob {
+  _id: string;
+  userId: string;
+  brandProfileId: string;
+  url: string;
+  domain: string;
+  status: ResearchJobStatus;
+  jobId: string; // BullMQ job ID
+  scrapingTier: ScrapingTier;
+  pagesScraped: number;
+  rawText: string;
+  analysis: Record<string, unknown>;
+  error: string;
+  scrapedAt?: Date;
+  analyzedAt?: Date;
+  createdAt: Date;
+}
+
 export interface BrandDNA {
   colors: string[];
   fonts: string[];
@@ -642,6 +690,29 @@ export enum KillSwitch {
   Content = "KILL_CONTENT",
   Agent = "KILL_AGENT",
   All = "KILL_ALL",
+}
+
+// ── Scraping Tiers ───────────────────────────────────────────────
+// Tiered escalation: Fast (static) → Dynamic (JS render) → Stealth (anti-bot bypass) → Puppeteer (last resort)
+// Each tier adds latency + resource cost. Always start at Tier 1.
+
+export enum ScrapingTier {
+  Fast = 1,
+  Dynamic = 2,
+  Stealth = 3,
+  Puppeteer = 4,
+}
+
+// ── Research Job Status ──────────────────────────────────────────
+// State machine: pending → scraping → analyzing → completed | failed
+// Used by research.model.ts and BullMQ worker for status tracking.
+
+export enum ResearchJobStatus {
+  Pending = "pending",
+  Scraping = "scraping",
+  Analyzing = "analyzing",
+  Completed = "completed",
+  Failed = "failed",
 }
 
 // ── Social Platforms ─────────────────────────────────────────────

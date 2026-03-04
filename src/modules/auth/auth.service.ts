@@ -61,7 +61,7 @@ interface RegisterInput {
 
 async function register(
   input: RegisterInput,
-): Promise<{ user: IUserDocument; tokens: TokenPair }> {
+): Promise<{ userId: string; email: string }> {
   const { email, password, name, phone, lang } = input;
 
   // Check if user already exists
@@ -99,13 +99,6 @@ async function register(
     },
   });
 
-  // Generate tokens
-  const tokens = generateTokens(user._id.toString());
-
-  // Store refresh token
-  user.refreshToken = tokens.refreshToken;
-  await user.save();
-
   // Send verification OTP (non-blocking — user can resend if this fails)
   const userLang = lang || "ar";
   sendVerificationOtp(user._id.toString(), email, userLang).catch((err) => {
@@ -118,7 +111,7 @@ async function register(
 
   logger.info("user_registered", { userId: user._id, email });
 
-  return { user, tokens };
+  return { userId: user._id.toString(), email: user.email };
 }
 
 // ── Login ────────────────────────────────────────────────────────
@@ -201,7 +194,13 @@ async function sendVerificationOtp(
   logger.info("verification_otp_sent", { userId, email });
 }
 
-async function verifyEmail(userId: string, otp: string): Promise<void> {
+async function verifyEmail(email: string, otp: string): Promise<void> {
+  const user = await UserModel.findOne({ email });
+  if (!user) {
+    throw new ApiError(404, ErrorCode.NotFound);
+  }
+
+  const userId = user._id.toString();
   const result = await verifyOtp(userId, "email_verification", otp);
 
   if (result === "expired") {
@@ -212,19 +211,18 @@ async function verifyEmail(userId: string, otp: string): Promise<void> {
   }
 
   // Mark email as verified and activate account
-  await UserModel.findByIdAndUpdate(userId, {
-    isEmailVerified: true,
-    status: "active",
-  });
+  user.isEmailVerified = true;
+  user.status = "active";
+  await user.save();
 
   logger.info("email_verified", { userId });
 }
 
 async function resendVerificationOtp(
-  userId: string,
+  email: string,
   lang: "ar" | "en",
 ): Promise<void> {
-  const user = await UserModel.findById(userId);
+  const user = await UserModel.findOne({ email });
   if (!user) {
     throw new ApiError(404, ErrorCode.NotFound);
   }
@@ -232,6 +230,8 @@ async function resendVerificationOtp(
   if (user.isEmailVerified) {
     throw new ApiError(400, ErrorCode.ValidationError);
   }
+
+  const userId = user._id.toString();
 
   // Check resend limit
   const count = await getResendCount(userId, "email_verification");

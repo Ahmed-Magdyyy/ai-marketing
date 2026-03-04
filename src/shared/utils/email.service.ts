@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────
 
 import nodemailer from "nodemailer";
+import { logger } from "./logger";
 const sendEmail = async (options: {
   email: string;
   subject: string;
@@ -35,9 +36,11 @@ const sendEmail = async (options: {
 
   transporter.verify(function (error, success) {
     if (error) {
-      console.log(error);
+      logger.error("email_transport_verify_error", { error: String(error) });
     } else {
-      console.log("Server is ready to take our messages");
+      logger.info("email_transport_verify_success", {
+        message: "Server is ready to take our messages",
+      });
     }
   });
 

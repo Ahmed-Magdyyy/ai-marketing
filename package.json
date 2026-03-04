@@ -5,8 +5,10 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "dev": "ts-node src/server.ts",
+    "dev": "nodemon --exec ts-node src/server.ts",
     "start": "node dist/server.js",
+    "start:workers": "node dist/workers.js",
+    "dev:workers": "nodemon --exec ts-node src/workers.ts",
     "test": "jest",
     "typecheck": "tsc --noEmit"
   },

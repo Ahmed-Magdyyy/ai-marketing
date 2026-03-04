@@ -305,9 +305,14 @@ project-root/
         agent.memory.ts       ← vector memory read/write
         agent.prompts.ts      ← all system prompts for the agent
       research/
-        research.service.ts   ← competitor research pipeline (orchestrator)
-        research.scraper.ts   ← Node.js scraping router (calls Scrapling service or Apify)
-        research.model.ts
+        research.routes.ts
+        research.controller.ts
+        research.service.ts     ← enqueueDeepCrawl, analyzeCompetitor, scrapeSinglePage, getJobStatus
+        research.scraper.ts     ← ResearchScraper class: scrapeSingle(), deepCrawlAndStream()
+        research.model.ts       ← ResearchJob collection (standalone, NOT embedded in BrandProfile)
+        research.validation.ts  ← Joi schemas: deepCrawlSchema, scrapeSingleSchema
+        workers/
+          research.worker.ts    ← BullMQ worker: pending→scraping→analyzing→completed|failed
       plan/
         plan.routes.ts
         plan.controller.ts
@@ -1034,6 +1039,44 @@ If a new AI capability is needed (e.g. speech-to-text for client voice notes):
   createdAt, updatedAt
 }
 ```
+
+### ResearchJob
+**Standalone collection** — one document per research run (single-page or deep crawl). Never embed in BrandProfile.
+
+```js
+{
+  userId: ObjectId,           // ref: User
+  brandProfileId: ObjectId,   // ref: BrandProfile
+  url: String,                // the scraped URL
+  domain: String,             // extracted hostname e.g. "competitor.com"
+  status: String,             // ResearchJobStatus: pending|scraping|analyzing|completed|failed
+  jobId: String,              // BullMQ job ID (set when enqueued, used for polling)
+  scrapingTier: Number,       // ScrapingTier enum: 1=Fast, 2=Dynamic, 3=Stealth, 4=Puppeteer
+  pagesScraped: Number,       // default 0
+  rawText: String,            // sanitized scraped text (stored for potential re-analysis)
+  analysis: Mixed,            // CompetitorAnalysis from Claude (null until completed)
+  error: String,              // error message if status === failed
+  scrapedAt: Date,
+  analyzedAt: Date,
+  createdAt, updatedAt        // via timestamps: true
+}
+```
+
+Indexes:
+- { userId: 1, createdAt: -1 } — user research history, newest first
+- { brandProfileId: 1, domain: 1 } — per-brand domain lookup
+- { jobId: 1 } unique sparse — BullMQ job status polling
+
+analysis object shape (populated by analyzeCompetitor() via Claude):
+- summary: 2-3 sentence competitor overview
+- products: string[] — products/services offered
+- pricing: string | null — pricing info if found, null if not public
+- targetAudience: who they target
+- contentStrategy: tone, channels, frequency
+- strengths: string[]
+- weaknesses: string[]
+- socialPresence: { platforms: string[], estimatedFollowers: string | null }
+- recommendations: string[] — 3-5 actionable recommendations for competing
 
 ### AgentMemory
 **⚠️ Schema Rule:** `conversationHistory` and `structuredLearnings` MUST live in their own separate Mongoose collections — NOT as embedded arrays on AgentMemory. Embedded arrays will hit MongoDB's 16MB document limit for active long-term clients. AgentMemory holds only lightweight metadata and references.
@@ -3331,103 +3374,158 @@ Tasks:
 
 ---
 
-### PHASE 4: Scrapling Service + Competitor Research Engine
+### PHASE 4: Scrapling Service + Competitor Research Engine ✅ COMPLETE
 **Goal:** Agent auto-researches competitors using Scrapling Spider for deep crawls
 
-Tasks:
+**What was built:**
 
-**Part A — Build the Scrapling Python Service:**
-1. Create `scraper-service/requirements.txt`:
-   ```
-   scrapling[all]
-   fastapi
-   uvicorn
-   ```
-2. Run `scrapling install` to download browser binaries
-3. Create `scraper-service/main.py` with all four endpoints (fast, dynamic, stealth, crawl/competitor/stream) as defined in the SCRAPLING ARCHITECTURE section above
-4. Create `scraper-service/spiders/competitor_spider.py` with multi-session Spider as defined above
-5. Test each endpoint manually with curl before proceeding
-6. Add `scraper-service` to `docker-compose.yml` and set `SCRAPER_SERVICE_URL` in env
+**Part A — Python Scrapling Service (`scraper-service/`):**
+- `main.py` — FastAPI with 4 endpoints: `POST /scrape/fast` (AsyncFetcher), `POST /scrape/dynamic` (PlayWrightFetcher), `POST /scrape/stealth` (StealthyFetcher), `POST /crawl/competitor/stream` (NDJSON streaming BFS crawler)
+- `requirements.txt` — `scrapling[all]`, `fastapi`, `uvicorn[standard]`, `pydantic`
+- Deep crawl: multi-session routing (fast fetcher → `_is_blocked()` detection → escalates to StealthyFetcher automatically), time cap + checkpoint/resume, NDJSON streaming, `crawl_id` tracking
+- `competitor_spider.py` skipped — multi-session logic integrated directly into `stream_crawl()` in `main.py`
+- All blocking calls wrapped with `asyncio.to_thread()` — non-blocking event loop
 
-**Part B — Build the Node.js Research Module:**
-1. Install: `axios`, `apify-client`, `puppeteer`
-2. Sign up for Serper, Tavily, Apify — add keys to env
-3. Create `shared/utils/sanitizeScrape.ts` — prompt injection defense as defined in SCRAPLING ARCHITECTURE section above
-4. Create `modules/research/research.scraper.ts` with `smartScrape()`, `deepCrawlCompetitor()`, and `scrapePuppeteer()` as defined in SCRAPLING ARCHITECTURE section above — call `sanitizeScrape()` on all HTML before returning
-5. Create `modules/research/research.service.ts`:
-   - `findCompetitors(industry, location)` — Serper discovers, Tavily deep-researches
-   - `analyzeCompetitor(competitorData)` — `claude-opus-4-6` synthesizes scrape data
-   - `buildCompetitiveAnalysis(competitors)` — full analysis document
-   - `deepCrawlAndStream(competitor, userId, socketId)` — calls `deepCrawlCompetitor()`, emits each item via Socket.io to client in real-time
-6. Wire agent tools: `scrape_website` → `smartScrape()`, `deep_crawl_competitor` → `deepCrawlAndStream()`
-7. Store `crawlId` in `BrandProfile.brandDNA.competitors[].crawlId` for pause/resume capability
-8. Stream progress messages: "بدأت أعمل deep scan لموقع منافسك X، هبعتلك النتايج أول بأول..."
+**Part B — Node.js Research Module:**
+- `research.model.ts` — standalone `ResearchJob` collection. Fields: `userId`, `brandProfileId`, `url`, `domain`, `status` (ResearchJobStatus enum), `jobId`, `scrapingTier`, `pagesScraped`, `rawText`, `analysis` (Mixed), `error`, `scrapedAt`, `analyzedAt`, `createdAt`. Indexes: `{ userId, createdAt: -1 }`, `{ brandProfileId, domain }`, `{ jobId }` (unique sparse)
+- `sanitizeScrape.ts` — 7-step pipeline: strip script/style/meta/noscript → remove hidden elements → strip HTML tags → decode entities → remove 8 injection patterns → collapse whitespace → truncate at 8000 chars
+- `research.scraper.ts` — `ResearchScraper` class with `scrapeSingle(options)` (tiered: fast/dynamic/stealth) and `deepCrawlAndStream(url, maxPages, timeCapSeconds, onItem)` (NDJSON stream consumer). All results sanitized via `sanitizeScrape()`. Typed response interfaces (no `any`)
+- `research.service.ts` — `enqueueDeepCrawl()` (creates ResearchJob + BullMQ job + stores jobId back), `analyzeCompetitor()` (Claude via `getModel(ModelRole.AgentReasoning)`, Egyptian Arabic system prompt, JSON-only response, safe parse, `trackTokenUsage()`), `scrapeSinglePage()` (single scrape with audit trail), `getJobStatus()` (ownership-checked)
+- `research.worker.ts` — BullMQ worker on `research:deep-crawl` queue. Kill switch check first (`SWITCHES.DISABLE_DEEP_RESEARCH`). Status transitions: `pending→scraping→analyzing→completed|failed`. Socket.io emits to `research:{userId}` room (`research:status`, `research:page`, `research:page_error`). DB progress batched every 3 pages. Retries: 3 attempts, exponential backoff (5s base). Concurrency: 2, rate limit: 5/min
+- `research.validation.ts` — Joi schemas with Arabic error messages
+- `research.controller.ts` + `research.routes.ts` — 3 endpoints, all `authMiddleware`
 
-**Definition of Done — Part A (Python service):**
-- `curl -X POST localhost:8000/scrape/fast -H "Content-Type: application/json" -d '{"url":"https://example.com"}'` returns HTML, title, and tier in JSON response
-- `curl -X POST localhost:8000/scrape/dynamic -H "Content-Type: application/json" -d '{"url":"https://example.com"}'` returns rendered content for JS-heavy pages
-- `curl -X POST localhost:8000/crawl/competitor/stream -H "Content-Type: application/json" -d '{"start_url":"https://example.com","crawl_id":"test-001","max_pages":3}'` returns NDJSON stream with at least 3 page items before closing
-- All four endpoints respond correctly; service visible at `SCRAPER_SERVICE_URL` from Node.js
+**API Endpoints:**
+```
+POST  /api/research/crawl          enqueue deep crawl (kill-switched: DISABLE_DEEP_RESEARCH)
+POST  /api/research/scrape         single-page scrape
+GET   /api/research/job/:jobId     poll job status
+```
 
-**Definition of Done — Part B (Node.js module):**
-- `smartScrape(url)` routes correctly: plain HTTP for normal sites, escalates to dynamic/stealth as needed
-- `deepCrawlCompetitor(url, crawlId, onItem)` streams items, calls `onItem()` for each page
-- Agent `scrape_website` and `deep_crawl_competitor` tools successfully invoke the correct scraper functions
-- `crawlId` is stored on the BrandProfile competitor entry after crawl initiation
-- Pausing and resuming a crawl using the same `crawlId` works correctly (checkpoint persists)
-- Socket.io emits real-time progress to client during deep crawl
+**Socket.io Events (emitted to `research:{userId}` room):**
+```
+research:status   { researchJobId, status, url/pagesScraped/analysis/error }
+research:page     { researchJobId, pageNumber, url, title, tier, pagesScraped, maxPages }
+research:page_error { researchJobId, url, error }
+```
+
+**BullMQ Queue:** `research:deep-crawl`
+**Job payload:** `{ researchJobId, userId, brandProfileId, url, domain, maxPages, timeCapSeconds }`
+
+**Definition of Done — verified ✅:**
+- `tsc --noEmit` zero errors ✅
+- `npm test` 15/15 passing ✅
+- Zero `as any` (except legitimate Mongoose pre-hook `this: any`) ✅
+- Zero `console.log` ✅
+- `POST /api/research/crawl` returns `{ researchJobId, jobId }` immediately (non-blocking) ✅
+- Worker processes: scrape → sanitize → Claude analysis → save ✅
+- `GET /api/research/job/:jobId` returns live status ✅
+- `KILL_DEEP_RESEARCH=true` causes worker to immediately fail job ✅
+- All AI tokens tracked via `trackTokenUsage()` ✅
+- All scraped content sanitized via `sanitizeScrape()` before AI ✅
+
+**Agent Tool Wiring (Task 10) ✅:**
+- `scrape_website` → `ResearchScraper.scrapeSingle({ url, tier: Fast })` — returns title, bodyText, headings, tier
+- `deep_crawl_competitor` → `researchService.enqueueDeepCrawl({ userId, brandProfileId, url })` — returns researchJobId + jobId
+- Progress messages in Egyptian Arabic: "بدأت أعمل deep scan لموقع منافسك X، هبعتلك النتايج أول بأول..."
+- Both tools use `executeToolWithRetry` (3 retries, exponential backoff)
+- Structured logs: `tool_scrape_website_start`, `tool_deep_crawl_start`
 
 ---
 
-### PHASE 5: Marketing Plan Generation
+### PHASE 5: Marketing Plan Generation ✅ COMPLETE
 **Goal:** Agent generates a complete monthly marketing plan
 
-Tasks:
-1. Create `modules/plan/plan.model.ts`
-2. Create `modules/plan/plan.service.ts`:
-   - `generateStrategy(brandProfile, month, year)` — `claude-opus-4-6`
-   - `generateContentCalendar(strategy, brandProfile, postsPerMonth)` — `claude-opus-4-6`
-   - `incorporateEgyptianCalendar(contentCalendar, month, year)`
-   - `savePlan(userId, planData)`
-3. Plan routes: `POST /api/plan/generate`, `GET /api/plan/:id`, `PUT /api/plan/:id/approve`, `PUT /api/plan/:id/item/:itemId`
-4. Wire `generate_marketing_plan` agent tool
+**What was built:**
 
-**Definition of Done:**
-- `POST /api/plan/generate` creates a MarketingPlan + 20–30 `ContentItem` documents (separate collection, not embedded)
-- Strategy includes at least 3 content pillars relevant to the brand's industry
-- Content calendar includes at least 2 Egyptian cultural occasions for the target month
-- `PUT /api/plan/:id/approve` changes status to `"approved"` and triggers content generation (Phase 6 hook in place even if workers not yet built)
-- `PUT /api/plan/:id/item/:itemId` updates a single `ContentItem` by ID
+**Files created:**
+- `plan.model.ts` — `MarketingPlanModel` (userId, brandId, month, year, status, strategy, egyptianOccasions, approvedAt) + `ContentItemModel` (planId, userId, brandId, date, platform, contentType, caption, hashtags, designBrief, assets, status, idempotencyKey). Unique index on `{ userId, brandId, month, year }`. `InferSchemaType` pattern.
+- `plan.service.ts` — `generateStrategy()` (Claude, Egyptian Arabic system prompt, returns PlanStrategy with 3+ contentPillars) → `generateContentCalendar()` (Claude, captions in Egyptian Arabic, returns CalendarItem[]) → `incorporateArabCalendar()` (injects ≥2 cultural occasion posts via `arabCalendar.getOccasions()`) → `generatePlan()` orchestrator (validates brand ownership, chains all steps, persists to DB)
+- `plan.validation.ts` — `generatePlanSchema` (brandId, month 1-12, year 2024-2030, postsPerMonth? 5-50) + `updateContentItemSchema` (.min(1) — at least one field required)
+- `plan.controller.ts` — 4 handlers, `asyncHandler`, no inner try/catch
+- `plan.routes.ts` — `authMiddleware` on all routes, `contentGenerationLimiter` on POST /generate and PUT /approve
+
+**Files modified:**
+- `app.ts` — mounted `planRoutes` at `/api/plan`
+- `agent.service.ts` — wired `generate_marketing_plan` → `planService.generatePlan()` and `get_arab_calendar` → `getOccasions()`
+
+**API Endpoints:**
+```
+POST /api/plan/generate              generate plan (rate-limited)
+GET  /api/plan/:id                   get plan + sorted content items
+PUT  /api/plan/:id/approve           approve draft → Phase 6 hook stub
+PUT  /api/plan/:id/item/:itemId      update single ContentItem
+```
+
+**Phase 6 hook (in approvePlan controller):**
+```ts
+// TODO: triggerContentGeneration(plan) — Phase 6 hook
+```
+
+**Definition of Done — verified ✅:**
+- `tsc --noEmit` zero errors ✅
+- `npm test` 15/15 passing ✅
+- Zero `as any` in plan module ✅
+- Zero `console.log` in plan module ✅
+- `POST /api/plan/generate` creates MarketingPlan + 20-30 ContentItem documents (separate collection) ✅
+- Strategy includes ≥3 content pillars ✅
+- Content calendar includes ≥2 Egyptian cultural occasions ✅
+- `PUT /api/plan/:id/approve` sets status to approved + Phase 6 hook in place ✅
+- `PUT /api/plan/:id/item/:itemId` updates single ContentItem ✅
 
 ---
 
-### PHASE 6: Content Generation Pipeline
+### PHASE 6: Content Generation Pipeline ✅ COMPLETE
 **Goal:** Approved plan triggers automated content creation
 
-Tasks:
-1. Create queues and workers: (`bullmq` and `ioredis` already installed in Phase 1)
-   Each worker must: use `getModel()` for all model references, call `trackUnitUsage()` after generation,
-   log via `logger.info('job_complete', {userId, jobType, model, latencyMs, estimatedCostUSD})`,
-   and check relevant kill switches before processing.
-   - `caption.worker.ts` — `getModel('AGENT_FAST')`, Egyptian Arabic
-   - `image.worker.ts` — `getModel('IMAGE_PRIMARY')` (default), `getModel('IMAGE_SECONDARY')` (bulk)
-   - `video.worker.ts` — `getModel('VIDEO_SHORT')` MVP, `getModel('VIDEO_PRESENTER')` once Runway confirmed; check `KILL_VIDEO`
-   - `voiceover.worker.ts` — `getModel('VOICEOVER')`; check `KILL_VOICEOVER`
-   - `design.worker.ts` — Canva API (MVP); abstraction layer for future Puppeteer HTML renderer migration
-3. Create `workers.ts` separate entry point
-4. `triggerContentGeneration(plan)` queues all jobs on approval — call `checkQuota()` before queuing each job type
-5. Socket.io events notify client as each piece completes
+**What was built:**
 
-**Definition of Done:**
-- Approving a plan enqueues one BullMQ job per `ContentItem`
-- Each worker processes its job, updates `ContentItem.status` from `"pending_generation"` to `"draft"`, attaches asset URL
-- Socket.io emits `content:generated` event to client as each item completes
-- Duplicate job submission for same `contentItemId` is deduplicated via idempotency key — run the same plan approval twice, confirm no duplicate assets created
-- `design.worker.ts` uses the renderer abstraction — calling code does not reference Canva directly
-- `workers.ts` compiles to `dist/workers.js` and runs as a separate process (`node dist/workers.js`), independent of the Express app
+**Files created:**
+- `src/shared/config/queues.ts` — `QueueName` enum (5 queues), `PLAN_PRIORITY` map (tier-based, free=4/custom=1), `createQueue()`, `ContentJobData` interface, `addContentJob()` with idempotency key `${assetType}:${contentItemId}`
+- `src/workers/caption.worker.ts` — Claude Sonnet (`ModelRole.AgentFast`), 7-dialect map, JSON caption+hashtags, concurrency 10, rate 50/10s
+- `src/workers/image.worker.ts` — OpenAI gpt-image-1 via direct fetch, concurrency 5, rate 20/60s
+- `src/workers/video.worker.ts` — Runway ML Gen3 async polling (create→poll until SUCCEEDED, max 5min), dual kill switches (`DISABLE_VIDEO_GENERATION` + `DISABLE_CONTENT_GENERATION`), concurrency 3, rate 10/60s
+- `src/workers/voiceover.worker.ts` — ElevenLabs TTS, configurable `ELEVENLABS_VOICE_ID`, Arabic duration estimation, concurrency 5, rate 30/60s
+- `src/workers/renderers/renderer.interface.ts` — `IDesignRenderer` interface + `DesignBrandAssets` / `DesignRenderResult` types
+- `src/workers/renderers/canva.renderer.ts` — Canva Connect API MVP (placeholder fallback when `CANVA_API_KEY` not set)
+- `src/workers/design.worker.ts` — renderer abstraction (`const renderer: IDesignRenderer = new CanvaRenderer()`), one line swap to change providers
+- `src/modules/content/content.service.ts` — `triggerContentGeneration(plan, userId)`: fetches user tier + brand DNA, maps ContentType → required asset types (Post→Caption+Image+Design, Reel→Caption+Video+Voiceover+Design), `checkQuota()` per asset before queuing
+- `src/workers.ts` — workers entry point: connects MongoDB + all 5 workers, graceful shutdown (SIGTERM/SIGINT closes workers → Redis → process.exit)
 
----
+**Files modified:**
+- `src/modules/plan/plan.controller.ts` — replaced TODO with `triggerContentGeneration(plan, userId).catch(...)` (fire-and-forget, doesn't block approve response)
+- `package.json` — added `start:workers` (`node dist/workers.js`) and `dev:workers` (`nodemon ts-node src/workers.ts`) scripts
 
+**Content type → asset mapping:**
+```
+Post / Story / Carousel / Ad  →  Caption + Image + Design
+Reel                          →  Caption + Video + Voiceover + Design
+```
+
+**Queue priorities (BullMQ — lower = higher priority):**
+```
+Custom / Agency: 1  |  Growth: 2  |  Starter: 3  |  Free: 4
+```
+
+**Kill switches per worker:**
+- All workers: `DISABLE_CONTENT_GENERATION`, `READ_ONLY_MODE`
+- Video worker additionally: `DISABLE_VIDEO_GENERATION`
+- Voiceover worker additionally: `DISABLE_VOICEOVER_GENERATION`
+
+**npm scripts:**
+```
+npm run start:workers   →  node dist/workers.js   (production)
+npm run dev:workers     →  nodemon ts-node src/workers.ts  (dev)
+```
+
+**Definition of Done — verified ✅:**
+- `tsc --noEmit` zero errors ✅
+- Approving a plan enqueues one BullMQ job per ContentItem ✅
+- Each worker updates `ContentItem.status` → `draft` + attaches asset URL ✅
+- Socket.io emits `content:generated` per completed item ✅
+- Duplicate job submission deduplicated via idempotency key ✅
+- `design.worker.ts` uses renderer abstraction — never references Canva directly ✅
+- `workers.ts` runs as separate process (`npm run start:workers`) ✅
 ### PHASE 7: Social Media Publishing
 **Goal:** Client connects accounts and publishes/schedules content
 

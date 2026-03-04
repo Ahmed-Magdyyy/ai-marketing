@@ -32,8 +32,17 @@ import { agentTools } from "./agent.tools";
 import { getReasoningModel } from "../../shared/middleware/killSwitch.middleware";
 import { trackTokenUsage } from "../../shared/utils/aiCostTracker";
 import { logger } from "../../shared/utils/logger";
-import { IBrandProfile, ConversationRole, ErrorCode } from "../../shared/types";
+import {
+  IBrandProfile,
+  ConversationRole,
+  ErrorCode,
+  ScrapingTier,
+} from "../../shared/types";
 import { getIO } from "../../shared/utils/socketProvider";
+import { ResearchScraper } from "../research/research.scraper";
+import { researchService } from "../research/research.service";
+import { planService } from "../plan/plan.service";
+import { getOccasions } from "../../shared/utils/arabCalendar";
 
 // ── Anthropic Client ─────────────────────────────────────────────
 // Reads ANTHROPIC_API_KEY from process.env automatically.
@@ -122,25 +131,48 @@ async function executeTool(
         },
       };
 
-    case "scrape_website":
-      // TODO: Wire to smartScrape() in research.scraper.ts
-      return {
-        success: true,
-        data: {
-          text: "",
-          message: `سكرابينج لـ: ${String(toolInput.url)} — سيتم التنفيذ في المرحلة القادمة`,
-        },
-      };
+    case "scrape_website": {
+      const scrapeUrl = String(toolInput.url);
+      logger.info("tool_scrape_website_start", { userId, url: scrapeUrl });
 
-    case "deep_crawl_competitor":
-      // TODO: Wire to deepCrawlCompetitor() in research.scraper.ts + Socket.io
+      const scrapeResult = await ResearchScraper.scrapeSingle({
+        url: scrapeUrl,
+        tier: ScrapingTier.Fast,
+      });
+
       return {
         success: true,
         data: {
-          pages: [],
-          message: `كراولينج عميق لـ: ${String(toolInput.url)} — سيتم التنفيذ في المرحلة القادمة`,
+          url: scrapeResult.url,
+          title: scrapeResult.title,
+          bodyText: scrapeResult.bodyText,
+          metaDescription: scrapeResult.metaDescription,
+          headings: scrapeResult.headings,
+          tier: scrapeResult.tier,
+          message: `تم قراءة الصفحة: ${scrapeResult.title || scrapeUrl}`,
         },
       };
+    }
+
+    case "deep_crawl_competitor": {
+      const crawlUrl = String(toolInput.url);
+      logger.info("tool_deep_crawl_start", { userId, url: crawlUrl });
+
+      const crawlResult = await researchService.enqueueDeepCrawl({
+        userId,
+        brandProfileId: String(toolInput.crawlId),
+        url: crawlUrl,
+      });
+
+      return {
+        success: true,
+        data: {
+          researchJobId: crawlResult.researchJobId,
+          jobId: crawlResult.jobId,
+          message: `بدأت أعمل deep scan لموقع منافسك ${crawlUrl}، هبعتلك النتايج أول بأول...`,
+        },
+      };
+    }
 
     case "scrape_social_profile":
       // TODO: Wire to Apify actors
@@ -173,25 +205,67 @@ async function executeTool(
         },
       };
 
-    case "generate_marketing_plan":
-      // TODO: Wire to BullMQ pipeline
-      return {
-        success: true,
-        data: {
-          planId: null,
-          message: `إنشاء خطة تسويقية لشهر ${String(toolInput.month)}/${String(toolInput.year)} — سيتم التنفيذ في المرحلة القادمة`,
-        },
-      };
+    case "generate_marketing_plan": {
+      const brandId = String(toolInput.brandId);
+      const month = Number(toolInput.month);
+      const year = Number(toolInput.year);
+      const postsPerMonth = toolInput.postsPerMonth
+        ? Number(toolInput.postsPerMonth)
+        : undefined;
 
-    case "get_arab_calendar":
-      // TODO: Wire to arabCalendar.ts
+      logger.info("tool_generate_plan_start", {
+        userId,
+        brandId,
+        month,
+        year,
+        postsPerMonth,
+      });
+
+      const planResult = await planService.generatePlan({
+        userId,
+        brandId,
+        month,
+        year,
+        postsPerMonth,
+      });
+
       return {
         success: true,
         data: {
-          occasions: [],
-          message: `مناسبات شهر ${String(toolInput.month)}/${String(toolInput.year)} لدولة ${String(toolInput.country)} — سيتم التنفيذ في المرحلة القادمة`,
+          planId: planResult.planId,
+          strategy: planResult.strategy,
+          contentItemsCount: planResult.contentItems.length,
+          egyptianOccasions: planResult.egyptianOccasions,
+          message: `تم إنشاء الخطة التسويقية لشهر ${month}/${year} بنجاح — ${planResult.contentItems.length} بوست`,
         },
       };
+    }
+
+    case "get_arab_calendar": {
+      const calMonth = Number(toolInput.month);
+      const calYear = Number(toolInput.year);
+      const country = String(toolInput.country || "egypt");
+
+      logger.info("tool_get_arab_calendar", {
+        userId,
+        month: calMonth,
+        year: calYear,
+        country,
+      });
+
+      const occasions = getOccasions(calMonth, calYear, country);
+
+      return {
+        success: true,
+        data: {
+          occasions,
+          month: calMonth,
+          year: calYear,
+          country,
+          message: `مناسبات شهر ${calMonth}/${calYear} لدولة ${country} — ${occasions.length} مناسبة`,
+        },
+      };
+    }
 
     default:
       return {

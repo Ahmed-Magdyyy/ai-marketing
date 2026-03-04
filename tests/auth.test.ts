@@ -24,12 +24,12 @@ describe("Auth Endpoints API Test", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(res.body.data.user.email).toBe(validUser.email);
-    expect(res.body.data.accessToken).toBeDefined();
+    expect(res.body.data.email).toBe(validUser.email);
+    expect(res.body.data.userId).toBeDefined();
 
-    // Check if the refresh token is stored in cookie
-    expect(res.headers["set-cookie"]).toBeDefined();
-    expect(res.headers["set-cookie"][0]).toContain("refreshToken=");
+    // Ensure no tokens/cookies are issued to unverified users
+    expect(res.body.data.accessToken).toBeUndefined();
+    expect(res.headers["set-cookie"]).toBeUndefined();
   });
 
   it("should fail to register with an existing email", async () => {

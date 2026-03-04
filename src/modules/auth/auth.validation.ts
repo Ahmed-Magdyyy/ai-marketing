@@ -43,8 +43,9 @@ export const loginSchema = Joi.object({
 // ── Email Verification ───────────────────────────────────────────
 
 export const verifyEmailSchema = Joi.object({
-  userId: Joi.string().required().messages({
-    "any.required": "معرّف المستخدم مطلوب",
+  email: Joi.string().email().required().messages({
+    "string.email": "البريد الإلكتروني غير صالح",
+    "any.required": "البريد الإلكتروني مطلوب",
   }),
   otp: Joi.string().length(6).required().messages({
     "string.length": "كود التحقق لازم يكون ٦ أرقام",
@@ -53,8 +54,9 @@ export const verifyEmailSchema = Joi.object({
 });
 
 export const resendOtpSchema = Joi.object({
-  userId: Joi.string().required().messages({
-    "any.required": "معرّف المستخدم مطلوب",
+  email: Joi.string().email().required().messages({
+    "string.email": "البريد الإلكتروني غير صالح",
+    "any.required": "البريد الإلكتروني مطلوب",
   }),
 });
 
