@@ -212,11 +212,23 @@ export interface BrandDNA {
   competitors: CompetitorInfo[];
 }
 
+export enum SocialPlatform {
+  Facebook = "facebook",
+  Instagram = "instagram",
+  TikTok = "tiktok",
+  Twitter = "twitter",
+  YouTube = "youtube",
+}
+
 export interface SocialAccount {
-  platform: string;
+  platform: SocialPlatform;
+  accountId: string;
+  accountHandle?: string;
   accessToken: string;
-  refreshToken: string;
-  pageId: string;
+  refreshToken?: string;
+  pageId?: string;
+  pageName?: string;
+  tokenExpiresAt?: Date;
   connectedAt: Date;
 }
 
@@ -232,6 +244,43 @@ export interface IBrandProfile {
   onboardingComplete: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+// ── Social Media Publishing ──────────────────────────────────────
+
+export interface PostData {
+  caption: string;
+  mediaUrls: string[];
+  contentType: ContentType;
+  hashtags?: string[];
+}
+
+export interface PublishResult {
+  postId: string;
+  platform: SocialPlatform;
+  publishedAt: Date;
+  url?: string;
+}
+
+export interface PostMetrics {
+  postId: string;
+  views: number;
+  reach: number;
+  mediaViewers: number; // alongside reach for June 2026 migration
+  likes: number;
+  comments: number;
+  shares: number;
+  saved: number;
+  fetchedAt: Date;
+}
+
+export interface PageInsights {
+  pageId: string;
+  followers: number;
+  reach: number;
+  mediaViewers: number; // alongside reach for June 2026 migration
+  engagement: number;
+  fetchedAt: Date;
 }
 
 // ── Marketing Plan ───────────────────────────────────────────────
@@ -713,15 +762,6 @@ export enum ResearchJobStatus {
   Analyzing = "analyzing",
   Completed = "completed",
   Failed = "failed",
-}
-
-// ── Social Platforms ─────────────────────────────────────────────
-
-export enum SocialPlatform {
-  Facebook = "facebook",
-  Instagram = "instagram",
-  TikTok = "tiktok",
-  Twitter = "twitter",
 }
 
 // ── AI Usage Log ─────────────────────────────────────────────────

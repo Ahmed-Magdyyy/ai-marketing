@@ -17,6 +17,7 @@ import { createImageWorker } from "./workers/image.worker";
 import { createVideoWorker } from "./workers/video.worker";
 import { createVoiceoverWorker } from "./workers/voiceover.worker";
 import { createDesignWorker } from "./workers/design.worker";
+import { createSocialPublishWorker } from "./workers/social-publish.worker";
 
 // Validate environment variables
 validateEnv();
@@ -33,6 +34,7 @@ async function startWorkers() {
     const videoWorker = createVideoWorker();
     const voiceoverWorker = createVoiceoverWorker();
     const designWorker = createDesignWorker();
+    const socialPublishWorker = createSocialPublishWorker();
 
     logger.info("All BullMQ workers started successfully");
 
@@ -47,6 +49,7 @@ async function startWorkers() {
           videoWorker.close(),
           voiceoverWorker.close(),
           designWorker.close(),
+          socialPublishWorker.close(),
         ]);
         logger.info("All workers closed");
 

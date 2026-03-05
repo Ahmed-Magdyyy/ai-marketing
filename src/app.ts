@@ -16,6 +16,7 @@ import agentRoutes from "./modules/agent/agent.routes";
 import adminRoutes from "./modules/admin/admin.routes";
 import researchRoutes from "./modules/research/research.routes";
 import planRoutes from "./modules/plan/plan.routes";
+import socialRoutes from "./modules/social/social.routes";
 
 function createApp(): Application {
   const app: Application = express();
@@ -46,6 +47,7 @@ function createApp(): Application {
   app.use("/api/agent", agentRoutes);
   app.use("/api/research", researchRoutes);
   app.use("/api/plan", planRoutes);
+  app.use("/api/social", socialRoutes);
   app.use("/api/admin", adminRoutes);
 
   // ── 404 + Error Handler ─────────────────────────────────────────

@@ -16,6 +16,7 @@ enum QueueName {
   VideoGeneration = "video-generation",
   VoiceoverGeneration = "voiceover-generation",
   DesignGeneration = "design-generation",
+  SocialPublish = "social-publish",
 }
 
 // ── Plan Priority ────────────────────────────────────────────────
@@ -73,4 +74,40 @@ async function addContentJob(
   });
 }
 
-export { QueueName, ContentJobData, PLAN_PRIORITY, createQueue, addContentJob };
+// ── Social Publish Job Data ──────────────────────────────────────
+
+interface SocialPublishJobData {
+  contentItemId: string;
+  planId: string;
+  userId: string;
+  brandId: string;
+  platform: string;
+  idempotencyKey: string;
+  scheduledAt?: string; // ISO string
+}
+
+// ── Add Social Publish Job ───────────────────────────────────────
+// Uses idempotencyKey as jobId to prevent duplicate publish jobs.
+
+async function addSocialPublishJob(
+  queue: Queue,
+  data: SocialPublishJobData,
+  tier: PlanTier,
+  delay?: number,
+): Promise<void> {
+  await queue.add("social-publish", data, {
+    jobId: data.idempotencyKey,
+    priority: PLAN_PRIORITY[tier],
+    delay,
+  });
+}
+
+export {
+  QueueName,
+  ContentJobData,
+  SocialPublishJobData,
+  PLAN_PRIORITY,
+  createQueue,
+  addContentJob,
+  addSocialPublishJob,
+};

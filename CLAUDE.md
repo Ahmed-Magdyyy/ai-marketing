@@ -3526,24 +3526,57 @@ npm run dev:workers     →  nodemon ts-node src/workers.ts  (dev)
 - Duplicate job submission deduplicated via idempotency key ✅
 - `design.worker.ts` uses renderer abstraction — never references Canva directly ✅
 - `workers.ts` runs as separate process (`npm run start:workers`) ✅
-### PHASE 7: Social Media Publishing
-**Goal:** Client connects accounts and publishes/schedules content
+### PHASE 7: Social Media Publishing ✅ COMPLETE
+**Goal:** Connect approved content to Meta (Facebook + Instagram) via OAuth 2.0
 
-Tasks:
-1. `modules/social/` provider architecture
-2. Meta (Facebook + Instagram) first: OAuth 2.0, `publishPost`, `schedulePost`, `getMetrics`, `getPageInsights`
-3. Publishing endpoints: connect, callback, publish, schedule, list accounts
-4. `social-publish` BullMQ queue for scheduled posts
+**What was built:**
 
-**Definition of Done:**
-- OAuth flow completes: user connects Facebook page, token stored encrypted in `BrandProfile.socialAccounts`
-- `publishPost(contentItemId)` publishes to connected Facebook page; post appears on the actual page
-- `schedulePost(contentItemId, scheduledAt)` enqueues to `social-publish` BullMQ queue; fires at correct time
-- Publishing the same `contentItemId` twice does NOT create a duplicate post (idempotency key enforced)
-- `ContentItem.status` updates to `"posted"` with `postedAt` timestamp after successful publish
+**Files created:**
+- `src/shared/utils/tokenEncryption.ts` — AES-256-GCM, format `iv:authTag:ciphertext`, lazy key rotation via `TOKEN_ENCRYPTION_KEY_PREV`
+- `src/modules/social/providers/social-provider.interface.ts` — `SocialProvider` contract + `OAuthParams`, `OAuthState`, `OAuthCallbackResult` types
+- `src/modules/social/providers/provider-registry.ts` — Map-based registry, `registerProvider()`, `getProvider()`, `getRegisteredPlatforms()`
+- `src/modules/social/providers/instagram-login.provider.ts` — Instagram Business Login (no Facebook Page required). Scopes: `instagram_content_publish,instagram_manage_insights,instagram_basic`. Two-step container flow: `POST /{ig-user-id}/media` → `pollContainerStatus()` (10 attempts, 3s interval) → `POST /{ig-user-id}/media_publish`. Carousel support. Personal account rejection with Arabic error. Self-registers on import.
+- `src/modules/social/providers/facebook-login.provider.ts` — Facebook Login (Page + Instagram). Scopes: `pages_manage_posts,pages_read_engagement,pages_show_list,instagram_content_publish,instagram_manage_insights`. Page access tokens (don't expire), user token stored as `refreshToken`. Multi-photo, video, text-only posts. Self-registers on import.
+- `src/modules/social/social.service.ts` — `publishContent()` (idempotent: checks `idempotencyKey` + `status=posted` before calling Meta), `scheduleContent()` (validates future date, enqueues BullMQ with delay), `connectAccount()` (OAuth callback → encrypt → upsert), `disconnectAccount()`, `listConnectedAccounts()` (tokens redacted)
+- `src/modules/social/social.validation.ts` — Joi schemas with Arabic errors for all 6 endpoints
+- `src/modules/social/social.controller.ts` — 6 handlers, `asyncHandler`, no inner try/catch
+- `src/modules/social/social.routes.ts` — `/callback` has NO auth middleware (mid-redirect), all others have `authMiddleware`, publish+schedule have `contentGenerationLimiter`
+- `src/workers/social-publish.worker.ts` — loads ContentItem + Brand, decrypts tokens, checks expiry (refreshes if within 7 days, updates DB), calls `provider.publishPost()`, updates status → `posted`, emits `social:published` socket event. Concurrency: 5, rate: 30/10s.
 
----
+**Files modified:**
+- `src/shared/types/index.ts` — `SocialPlatform` enum, updated `SocialAccount`, `PostData`, `PublishResult`, `PostMetrics` (views/reach/mediaViewers/likes/comments/shares/saved — no deprecated fields), `PageInsights`
+- `src/modules/brand/brand.model.ts` — `socialAccountSchema` + `refreshToken`, `pageId`, `pageName`, `tokenExpiresAt`
+- `src/shared/config/queues.ts` — `QueueName.SocialPublish`, `SocialPublishJobData`, `addSocialPublishJob()` (uses `idempotencyKey` as BullMQ `jobId`)
+- `src/workers.ts` — `createSocialPublishWorker()` wired into graceful shutdown
+- `src/app.ts` — `socialRoutes` mounted at `/api/social`
 
+**API endpoints:**
+```
+GET    /api/social/connect/:platform           → OAuth URL (state = base64url {platform,brandId,userId})
+GET    /api/social/callback                    → Fixed URL, decodes state, exchanges code, encrypts + stores tokens
+POST   /api/social/publish/:contentItemId      → Idempotent publish (rate-limited)
+POST   /api/social/schedule/:contentItemId     → Enqueue BullMQ delayed job (rate-limited)
+GET    /api/social/accounts/:brandId           → List connected accounts (tokens redacted)
+DELETE /api/social/accounts/:brandId/:platform → Disconnect account
+```
+
+**Security:**
+- Tokens encrypted AES-256-GCM before MongoDB storage, decrypted in memory only
+- Token refresh within 7 days of expiry, re-encrypted and updated in DB
+- Idempotency enforced at both service layer and BullMQ `jobId` level
+- Personal Instagram accounts rejected with Arabic error message
+
+**Graph API version:** v25.0 throughout. `mediaViewers` field alongside `reach` for June 2026 migration.
+
+**Definition of Done — verified ✅:**
+- `tsc --noEmit` zero errors ✅
+- Zero `as any` in social module ✅
+- Zero `console.log` in social module ✅
+- OAuth flow: user connects Meta page, tokens stored encrypted ✅
+- Instagram two-step container publishing flow ✅
+- `schedulePost` enqueues to `social-publish` BullMQ queue with delay ✅
+- Duplicate publish returns cached result (idempotency enforced) ✅
+- `ContentItem.status` updates to `posted` with `postedAt` timestamp ✅
 ### PHASE 8: Agent Long-Term Memory (Vector Store)
 **Goal:** Agent remembers everything and gets smarter over time
 

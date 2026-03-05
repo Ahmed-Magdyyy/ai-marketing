@@ -103,6 +103,9 @@ export const approvePlan = asyncHandler(
       console.error("[approvePlan] triggerContentGeneration failed:", err),
     );
 
+    // Phase 7/9 — auto-schedule social posts after content generation completes.
+    // Future: iterate plan contentItems with scheduledAt and enqueue social-publish jobs.
+
     return sendSuccess(res, plan, 200, SuccessCode.Ok, req);
   },
 );

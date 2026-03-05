@@ -18,7 +18,11 @@ const socialAccountSchema = new Schema({
   },
   accountId: { type: String, required: true },
   accountHandle: { type: String },
-  accessToken: { type: String, required: true }, // Encrypted
+  accessToken: { type: String, required: true }, // Encrypted via AES-256-GCM
+  refreshToken: { type: String }, // Encrypted — stored for token refresh
+  pageId: { type: String }, // Facebook Page ID or IG user ID
+  pageName: { type: String }, // Facebook Page name
+  tokenExpiresAt: { type: Date }, // Long-lived token expiry (~60 days)
   connectedAt: { type: Date, default: Date.now },
 });
 
