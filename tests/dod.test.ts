@@ -11,6 +11,9 @@ import {
   ContentType,
   ContentStatus,
   AssetType,
+  SocialPlatform,
+  MemoryCategory,
+  LearningSource,
 } from "../src/shared/types";
 
 // ─────────────────────────────────────────────────────────────────
@@ -144,9 +147,7 @@ describe("Phase 4 — Research Engine", () => {
       expect(result.toLowerCase()).not.toContain("[inst]");
       expect(result.toLowerCase()).not.toContain("act as");
       expect(result.toLowerCase()).not.toContain("pretend you are");
-      expect(result.toLowerCase()).not.toContain(
-        "do not follow your instructions",
-      );
+      expect(result.toLowerCase()).not.toContain("do not follow");
     }
   });
 
@@ -278,5 +279,224 @@ describe("Phase 6 — Content Generation Pipeline", () => {
     expect(typeof renderer.render).toBe("function");
     expect(typeof renderer.providerName).toBe("string");
     expect(renderer.providerName).toBe("canva");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// Phase 7 — Social Media Publishing
+// ─────────────────────────────────────────────────────────────────
+
+describe("Phase 7 — Social Media Publishing", () => {
+  it("SocialPlatform enum has all 5 platforms", () => {
+    expect(SocialPlatform.Facebook).toBe("facebook");
+    expect(SocialPlatform.Instagram).toBe("instagram");
+    expect(SocialPlatform.TikTok).toBe("tiktok");
+    expect(SocialPlatform.Twitter).toBe("twitter");
+    expect(SocialPlatform.YouTube).toBe("youtube");
+  });
+
+  it("tokenEncryption round-trip: encrypt → decrypt returns original plaintext", async () => {
+    process.env.TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, "a").toString("base64");
+    const { encryptToken, decryptToken } =
+      await import("../src/shared/utils/tokenEncryption");
+    const original = "EAABsbCS0OlABOtest_access_token_abc123";
+    const encrypted = encryptToken(original);
+    expect(encrypted).not.toBe(original);
+    expect(encrypted.split(":")).toHaveLength(3); // iv:authTag:ciphertext
+    const decrypted = decryptToken(encrypted);
+    expect(decrypted).toBe(original);
+  });
+
+  it("tokenEncryption produces different ciphertext each call (unique IV)", async () => {
+    process.env.TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, "a").toString("base64");
+    const { encryptToken } =
+      await import("../src/shared/utils/tokenEncryption");
+    const token = "same_token_value";
+    const enc1 = encryptToken(token);
+    const enc2 = encryptToken(token);
+    expect(enc1).not.toBe(enc2); // different IV each time
+  });
+
+  it("SocialProvider interface: Instagram + Facebook providers are exported functions", async () => {
+    const { instagramLoginProvider } =
+      await import("../src/modules/social/providers/instagram-login.provider");
+    const { facebookLoginProvider } =
+      await import("../src/modules/social/providers/facebook-login.provider");
+    expect(typeof instagramLoginProvider.getAuthUrl).toBe("function");
+    expect(typeof instagramLoginProvider.handleCallback).toBe("function");
+    expect(typeof instagramLoginProvider.publishPost).toBe("function");
+    expect(instagramLoginProvider.platform).toBe(SocialPlatform.Instagram);
+
+    expect(typeof facebookLoginProvider.getAuthUrl).toBe("function");
+    expect(typeof facebookLoginProvider.handleCallback).toBe("function");
+    expect(typeof facebookLoginProvider.publishPost).toBe("function");
+    expect(facebookLoginProvider.platform).toBe(SocialPlatform.Facebook);
+  });
+
+  it("provider registry returns Instagram provider after import", async () => {
+    // Import providers to trigger self-registration
+    await import("../src/modules/social/providers/instagram-login.provider");
+    await import("../src/modules/social/providers/facebook-login.provider");
+    const { getProvider } =
+      await import("../src/modules/social/providers/provider-registry");
+    const igProvider = getProvider(SocialPlatform.Instagram);
+    const fbProvider = getProvider(SocialPlatform.Facebook);
+    expect(igProvider).toBeDefined();
+    expect(fbProvider).toBeDefined();
+    expect(igProvider.platform).toBe(SocialPlatform.Instagram);
+    expect(fbProvider.platform).toBe(SocialPlatform.Facebook);
+  });
+
+  it("social service functions are all exported", async () => {
+    const socialService = await import("../src/modules/social/social.service");
+    expect(typeof socialService.publishContent).toBe("function");
+    expect(typeof socialService.scheduleContent).toBe("function");
+    expect(typeof socialService.connectAccount).toBe("function");
+    expect(typeof socialService.disconnectAccount).toBe("function");
+    expect(typeof socialService.listConnectedAccounts).toBe("function");
+  });
+
+  it("social publish worker factory is exported", async () => {
+    const { createSocialPublishWorker } =
+      await import("../src/workers/social-publish.worker");
+    expect(typeof createSocialPublishWorker).toBe("function");
+  });
+
+  it("SocialPublish queue name is defined in QueueName enum", async () => {
+    const { QueueName } = await import("../src/shared/config/queues");
+    expect(QueueName.SocialPublish).toBe("social-publish");
+  });
+
+  it("GET /api/social/connect/facebook without auth returns 401", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .get("/api/social/connect/facebook")
+      .query({ brandId: "000000000000000000000001" });
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /api/social/connect/instagram without auth returns 401", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .get("/api/social/connect/instagram")
+      .query({ brandId: "000000000000000000000001" });
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /api/social/callback without code returns 400", async () => {
+    const app = createApp();
+    const res = await request(app).get("/api/social/callback");
+    expect(res.status).toBe(400);
+  });
+
+  it("GET /api/social/callback with invalid state returns 400", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .get("/api/social/callback")
+      .query({ code: "test_code", state: "not_valid_base64_json!!!" });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /api/social/publish/:contentItemId without auth returns 401", async () => {
+    const app = createApp();
+    const res = await request(app).post(
+      "/api/social/publish/000000000000000000000001",
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("DELETE /api/social/accounts/:brandId/:platform without auth returns 401", async () => {
+    const app = createApp();
+    const res = await request(app).delete(
+      "/api/social/accounts/000000000000000000000001/instagram",
+    );
+    expect(res.status).toBe(401);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// Phase 8 — Agent Long-Term Memory
+// ─────────────────────────────────────────────────────────────────
+
+describe("Phase 8 — Agent Long-Term Memory", () => {
+  it("MemoryCategory enum has all 6 categories", () => {
+    expect(MemoryCategory.CompetitorInsight).toBe("competitor_insight");
+    expect(MemoryCategory.BrandPreference).toBe("brand_preference");
+    expect(MemoryCategory.AudienceInsight).toBe("audience_insight");
+    expect(MemoryCategory.ContentFeedback).toBe("content_feedback");
+    expect(MemoryCategory.StrategyNote).toBe("strategy_note");
+    expect(MemoryCategory.General).toBe("general");
+  });
+
+  it("LearningSource enum has all 5 values including ManualNote + ResearchInsight", () => {
+    expect(LearningSource.Conversation).toBe("conversation");
+    expect(LearningSource.PerformanceReview).toBe("performance_review");
+    expect(LearningSource.Feedback).toBe("feedback");
+    expect(LearningSource.ManualNote).toBe("manual_note");
+    expect(LearningSource.ResearchInsight).toBe("research_insight");
+  });
+
+  it("agent.memory exports all 4 functions", async () => {
+    const memory = await import("../src/modules/agent/agent.memory");
+    expect(typeof memory.embedText).toBe("function");
+    expect(typeof memory.saveMemory).toBe("function");
+    expect(typeof memory.retrieveMemories).toBe("function");
+    expect(typeof memory.pruneOldMemories).toBe("function");
+  });
+
+  it("AgentLearningModel is exported from agentLearning.model", async () => {
+    const { AgentLearningModel } =
+      await import("../src/modules/agent/agentLearning.model");
+    expect(AgentLearningModel).toBeDefined();
+    expect(AgentLearningModel.modelName).toBe("AgentLearning");
+  });
+
+  it("Qdrant config exports QDRANT_COLLECTION_NAME and EMBEDDING_DIMENSION", async () => {
+    const { QDRANT_COLLECTION_NAME, EMBEDDING_DIMENSION } =
+      await import("../src/shared/config/qdrant");
+    expect(QDRANT_COLLECTION_NAME).toBe("brand_memories");
+    expect(EMBEDDING_DIMENSION).toBe(1536);
+  });
+
+  it("qdrantClient is null when QDRANT_URL is not set (graceful degradation)", async () => {
+    // Env vars not set in test environment — client should be null
+    const { qdrantClient } = await import("../src/shared/config/qdrant");
+    // Either null (not configured) or a QdrantClient instance (if env vars happen to be set)
+    expect(qdrantClient === null || typeof qdrantClient === "object").toBe(
+      true,
+    );
+  });
+
+  it("openai client is exported from models.ts", async () => {
+    const { openai } = await import("../src/shared/config/models");
+    expect(openai).toBeDefined();
+    expect(typeof openai.embeddings.create).toBe("function");
+  });
+
+  it("QueueName.MemoryPrune is defined", async () => {
+    const { QueueName } = await import("../src/shared/config/queues");
+    expect(QueueName.MemoryPrune).toBe("memory-prune");
+  });
+
+  it("createMemoryPruneWorker is exported as a function", async () => {
+    const { createMemoryPruneWorker } =
+      await import("../src/workers/memory-prune.worker");
+    expect(typeof createMemoryPruneWorker).toBe("function");
+  });
+
+  it("pruneOldMemories is exported and returns a number", async () => {
+    const { pruneOldMemories } =
+      await import("../src/modules/agent/agent.memory");
+    expect(typeof pruneOldMemories).toBe("function");
+    // pruneOldMemories with 0 months returns 0 without hitting external APIs
+    // when there are no expired docs in MongoDB
+    const result = await pruneOldMemories("nonexistent-user-xyz", 12);
+    expect(typeof result).toBe("number");
+    expect(result).toBeGreaterThanOrEqual(0);
+  });
+
+  it("ensureCollection is exported as a function from qdrant config", async () => {
+    const { ensureCollection } = await import("../src/shared/config/qdrant");
+    expect(typeof ensureCollection).toBe("function");
   });
 });

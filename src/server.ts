@@ -8,6 +8,7 @@ import { createApp } from "./app";
 import { connectDB } from "./shared/config/db";
 import { logger } from "./shared/utils/logger";
 import { setIO } from "./shared/utils/socketProvider";
+import { ensureCollection } from "./shared/config/qdrant";
 
 // Validate environment variables before anything else
 const env = validateEnv();
@@ -35,6 +36,7 @@ io.on("connection", (socket) => {
 
 async function startServer(): Promise<void> {
   await connectDB();
+  await ensureCollection();
 
   httpServer.listen(env.PORT, () => {
     logger.info(`Server running on port ${env.PORT} (${env.NODE_ENV})`);

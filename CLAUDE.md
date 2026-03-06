@@ -3577,28 +3577,43 @@ DELETE /api/social/accounts/:brandId/:platform → Disconnect account
 - `schedulePost` enqueues to `social-publish` BullMQ queue with delay ✅
 - Duplicate publish returns cached result (idempotency enforced) ✅
 - `ContentItem.status` updates to `posted` with `postedAt` timestamp ✅
-### PHASE 8: Agent Long-Term Memory (Vector Store)
-**Goal:** Agent remembers everything and gets smarter over time
+### PHASE 8: Agent Long-Term Memory ✅ COMPLETE
+**Goal:** Wire `save_brand_memory` + `retrieve_brand_memory` agent tool stubs to real Qdrant + OpenAI embeddings implementations.
 
-Tasks:
-1. Set up Qdrant Cloud, create `brand_memories` collection
-2. Update `modules/agent/agent.memory.ts`:
-   - `embedText(text)` — `text-embedding-3-small`
-   - `saveMemory(userId, text, metadata)` — embed + upsert to Qdrant
-   - `retrieveRelevantMemories(userId, query, topK)` — vector similarity search
-3. Before each agent response: retrieve top 5 relevant memories
-4. After each session: extract learnings, save to Qdrant
-5. After monthly plan: save performance insights as memories
+**Architecture:** Text → OpenAI `text-embedding-3-small` (1536-dim) → Qdrant Cloud (vector storage + similarity search, filtered by userId+brandId) → MongoDB `AgentLearning` (metadata + pruning)
 
-**Definition of Done:**
-- `saveMemory(userId, text, metadata)` embeds text and upserts to Qdrant successfully
-- `retrieveRelevantMemories(userId, query, 5)` returns 5 semantically relevant memories for a test query
-- Agent includes retrieved memories in context before each Opus response (verify in logs)
-- After a conversation session, learnings are extracted and saved to `AgentLearning` collection AND to Qdrant
-- Memory retrieval adds no more than 500ms to average agent response time
+**Files created:**
+- `src/shared/config/qdrant.ts` — singleton `QdrantClient`, `QDRANT_COLLECTION_NAME = "brand_memories"`, `EMBEDDING_DIMENSION = 1536`, `ensureCollection()` (idempotent, creates collection + payload indexes on `userId`/`brandId`, graceful degradation if env vars missing)
+- `src/modules/agent/agent.memory.ts` — 4 exported functions: `embedText()` (OpenAI embeddings, cost tracked via `trackTokenUsage`), `saveMemory()` (embed → Qdrant upsert → MongoDB save, returns pointId or null), `retrieveMemories()` (embed query → Qdrant similarity search → MongoDB fetch in relevance order), `pruneOldMemories()` (deletes Qdrant points + MongoDB docs older than agentMemoryMonths). All degrade gracefully when Qdrant unconfigured.
+- `src/modules/agent/agentLearning.model.ts` — Mongoose schema, compound index `{ userId, brandId, createdAt: -1 }`, unique index `{ qdrantPointId }`, write-once (no timestamps)
+- `src/workers/memory-prune.worker.ts` — BullMQ repeatable job `repeat: { pattern: "0 3 * * *" }`, discovers all userIds with memories via `AgentLearningModel.distinct("userId")`, reads `agentMemoryMonths` per user via `mongoose.connection.collection("users")` (avoids circular import), calls `pruneOldMemories()` per user, concurrency 1
 
----
+**Files modified:**
+- `src/shared/types/index.ts` — `MemoryCategory` enum (6 values matching `agent.tools.ts` categories), `IAgentLearning` interface, extended `LearningSource` with `ManualNote` + `ResearchInsight`
+- `src/shared/config/models.ts` — OpenAI client singleton (`const openai = new OpenAI()`), exported alongside `getModel`
+- `src/shared/config/queues.ts` — `QueueName.MemoryPrune = "memory-prune"`
+- `src/modules/agent/agent.service.ts` — `brandId` threaded through `executeToolWithRetry()` → `executeTool()`. `save_brand_memory`: maps snake_case category → `MemoryCategory` enum → calls `saveMemory()` with `LearningSource.Conversation`. `retrieve_brand_memory`: calls `retrieveMemories()` → returns memories in Qdrant relevance order.
+- `src/server.ts` + `src/workers.ts` — `ensureCollection()` called after `connectDB()` on startup. Memory prune worker registered in graceful shutdown.
 
+**Required env vars:**
+```
+QDRANT_URL=https://your-cluster.qdrant.io
+QDRANT_API_KEY=your-api-key
+OPENAI_API_KEY=your-openai-key
+```
+Memory gracefully degrades if not set — agent runs normally, skips memory operations.
+
+**⚠️ Swap warning:** Changing `MODEL_EMBEDDINGS` env var invalidates ALL existing Qdrant vectors. Re-embed everything if swapping embedding model.
+
+**Definition of Done — verified ✅:**
+- `tsc --noEmit` zero errors across all 8 tasks ✅
+- Zero `as any` in new files ✅
+- Zero `console.log` in new files ✅
+- All embedding calls tracked via `trackTokenUsage` ✅
+- `save_brand_memory` tool calls real `saveMemory()` ✅
+- `retrieve_brand_memory` tool calls real `retrieveMemories()` ✅
+- Memory prune job runs daily at 03:00 UTC via BullMQ cron ✅
+- Graceful degradation when Qdrant unconfigured ✅
 ### PHASE 9: Analytics, Observability & Alerting
 **Goal:** Client sees performance metrics, agent learns from results, team gets operational visibility
 

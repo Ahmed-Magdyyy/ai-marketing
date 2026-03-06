@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────
 
 import { ModelRole } from "../types";
+import OpenAI from "openai";
 
 // ── Model Defaults ────────────────────────────────────────────────
 // Each entry: ENV override takes priority, then falls back to default.
@@ -83,4 +84,11 @@ function getModel(role: ModelRole): string {
   return model;
 }
 
-export { MODELS, MODEL_CAPABILITIES, getModel };
+// ── Provider Clients ─────────────────────────────────────────────
+// Centralized AI provider clients. Add new providers here.
+// OpenAI: used for embeddings (text-embedding-3-small) and image gen.
+// Reads OPENAI_API_KEY from process.env automatically.
+
+const openai = new OpenAI();
+
+export { MODELS, MODEL_CAPABILITIES, getModel, openai };

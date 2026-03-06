@@ -37,12 +37,15 @@ import {
   ConversationRole,
   ErrorCode,
   ScrapingTier,
+  MemoryCategory,
+  LearningSource,
 } from "../../shared/types";
 import { getIO } from "../../shared/utils/socketProvider";
 import { ResearchScraper } from "../research/research.scraper";
 import { researchService } from "../research/research.service";
 import { planService } from "../plan/plan.service";
 import { getOccasions } from "../../shared/utils/arabCalendar";
+import { saveMemory, retrieveMemories } from "./agent.memory";
 
 // ── Anthropic Client ─────────────────────────────────────────────
 // Reads ANTHROPIC_API_KEY from process.env automatically.
@@ -67,10 +70,11 @@ async function executeToolWithRetry(
   toolName: string,
   toolInput: Record<string, unknown>,
   userId: string,
+  brandId: string,
 ): Promise<{ success: boolean; data: unknown; error?: string }> {
   for (let attempt = 1; attempt <= MAX_TOOL_RETRIES; attempt++) {
     try {
-      const result = await executeTool(toolName, toolInput, userId);
+      const result = await executeTool(toolName, toolInput, userId, brandId);
       return result;
     } catch (error: unknown) {
       const message =
@@ -117,6 +121,7 @@ async function executeTool(
   toolName: string,
   toolInput: Record<string, unknown>,
   userId: string,
+  brandId: string,
 ): Promise<{ success: boolean; data: unknown; error?: string }> {
   logger.info("tool_execution_start", { toolName, userId, toolInput });
 
@@ -184,26 +189,63 @@ async function executeTool(
         },
       };
 
-    case "save_brand_memory":
-      // TODO: Wire to MongoDB + Qdrant
-      return {
-        success: true,
-        data: {
-          saved: true,
-          message:
-            "تم حفظ المعلومة في ذاكرة البراند — سيتم التنفيذ في المرحلة القادمة",
-        },
-      };
+    case "save_brand_memory": {
+      const content = String(toolInput.content);
+      const categoryInput = String(toolInput.category);
 
-    case "retrieve_brand_memory":
-      // TODO: Wire to Qdrant vector search
+      // Map snake_case tool input to MemoryCategory enum
+      const categoryMap: Record<string, MemoryCategory> = {
+        competitor_insight: MemoryCategory.CompetitorInsight,
+        brand_preference: MemoryCategory.BrandPreference,
+        audience_insight: MemoryCategory.AudienceInsight,
+        content_feedback: MemoryCategory.ContentFeedback,
+        strategy_note: MemoryCategory.StrategyNote,
+        general: MemoryCategory.General,
+      };
+      const category = categoryMap[categoryInput] ?? MemoryCategory.General;
+
+      const pointId = await saveMemory(
+        userId,
+        brandId,
+        content,
+        category,
+        LearningSource.Conversation,
+      );
+
+      return {
+        success: pointId !== null,
+        data: {
+          saved: pointId !== null,
+          pointId,
+          message: pointId
+            ? "تم حفظ المعلومة في ذاكرة البراند بنجاح"
+            : "فشل حفظ المعلومة — Qdrant غير متاح",
+        },
+      };
+    }
+
+    case "retrieve_brand_memory": {
+      const query = String(toolInput.query);
+
+      const memories = await retrieveMemories(userId, brandId, query);
+
       return {
         success: true,
         data: {
-          memories: [],
-          message: `بحث في الذاكرة عن: ${String(toolInput.query)} — سيتم التنفيذ في المرحلة القادمة`,
+          memories: memories.map((m) => ({
+            content: m.content,
+            category: m.category,
+            source: m.source,
+            createdAt: m.createdAt,
+          })),
+          count: memories.length,
+          message:
+            memories.length > 0
+              ? `تم العثور على ${memories.length} ذكريات متعلقة`
+              : "مفيش ذكريات متعلقة بالبحث ده",
         },
       };
+    }
 
     case "generate_marketing_plan": {
       const brandId = String(toolInput.brandId);
@@ -459,6 +501,7 @@ export async function chat(
           toolBlock.name,
           toolBlock.input as Record<string, unknown>,
           userId,
+          brandProfile ? String(brandProfile._id) : "",
         );
 
         logger.info("tool_execution_complete", {

@@ -17,6 +17,7 @@ enum QueueName {
   VoiceoverGeneration = "voiceover-generation",
   DesignGeneration = "design-generation",
   SocialPublish = "social-publish",
+  MemoryPrune = "memory-prune",
 }
 
 // ── Plan Priority ────────────────────────────────────────────────

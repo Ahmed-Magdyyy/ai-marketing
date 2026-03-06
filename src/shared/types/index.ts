@@ -393,6 +393,8 @@ export enum LearningSource {
   Conversation = "conversation",
   PerformanceReview = "performance_review",
   Feedback = "feedback",
+  ManualNote = "manual_note",
+  ResearchInsight = "research_insight",
 }
 
 // ── API Response ─────────────────────────────────────────────────
@@ -777,4 +779,30 @@ export interface IAiUsageLog {
   estimatedCostUSD: number;
   context: string; // 'agent_chat' | 'caption_generation' | 'image_generation' | etc.
   timestamp: Date;
+}
+
+// ── Agent Memory — Memory Category ──────────────────────────────
+// Classification for better retrieval. Matches agent.tools.ts categories.
+
+export enum MemoryCategory {
+  CompetitorInsight = "competitor_insight",
+  BrandPreference = "brand_preference",
+  AudienceInsight = "audience_insight",
+  ContentFeedback = "content_feedback",
+  StrategyNote = "strategy_note",
+  General = "general",
+}
+
+// ── Agent Learning (Qdrant + MongoDB metadata) ──────────────────
+// Each learning is stored as a vector in Qdrant for similarity search
+// and as a document in MongoDB for metadata lookups and pruning.
+
+export interface IAgentLearning {
+  userId: string;
+  brandId: string;
+  content: string;
+  category: MemoryCategory;
+  source: LearningSource;
+  qdrantPointId: string; // UUID of the corresponding Qdrant vector point
+  createdAt: Date;
 }

@@ -18,6 +18,8 @@ import { createVideoWorker } from "./workers/video.worker";
 import { createVoiceoverWorker } from "./workers/voiceover.worker";
 import { createDesignWorker } from "./workers/design.worker";
 import { createSocialPublishWorker } from "./workers/social-publish.worker";
+import { createMemoryPruneWorker } from "./workers/memory-prune.worker";
+import { ensureCollection } from "./shared/config/qdrant";
 
 // Validate environment variables
 validateEnv();
@@ -26,6 +28,7 @@ async function startWorkers() {
   try {
     // 1. Connect to MongoDB (needed for updating ContentItem status)
     await connectDB();
+    await ensureCollection();
     logger.info("MongoDB connected for workers");
 
     // 2. Instantiate all workers
@@ -35,6 +38,7 @@ async function startWorkers() {
     const voiceoverWorker = createVoiceoverWorker();
     const designWorker = createDesignWorker();
     const socialPublishWorker = createSocialPublishWorker();
+    const memoryPruneWorker = createMemoryPruneWorker();
 
     logger.info("All BullMQ workers started successfully");
 
@@ -50,6 +54,7 @@ async function startWorkers() {
           voiceoverWorker.close(),
           designWorker.close(),
           socialPublishWorker.close(),
+          memoryPruneWorker.close(),
         ]);
         logger.info("All workers closed");
 
