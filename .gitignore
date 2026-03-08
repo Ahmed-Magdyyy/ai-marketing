@@ -34,8 +34,8 @@ verify_output.txt
 .DS_Store
 Thumbs.db
 ts_errors.txt
-server/src/modules/upload/upload.service.test.ts
-server/tests/dod.test.ts
+# server/src/modules/upload/upload.service.test.ts
+# server/tests/dod.test.ts
 
 .agent
 .agents
