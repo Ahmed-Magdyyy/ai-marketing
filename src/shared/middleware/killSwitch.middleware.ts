@@ -40,6 +40,19 @@ const SWITCHES = {
   // Disables the smart agent (chat)
   // Use when API costs spike or emergency maintenance on agent infrastructure
   DISABLE_AGENT: process.env.KILL_AGENT === "true",
+
+  // Disables all payment gateway operations (Paymob checkout)
+  // Use when: Paymob outage, payment processing issues, or billing maintenance
+  DISABLE_PAYMENT_GATEWAYS: process.env.KILL_PAYMENT_GATEWAYS === "true",
+
+  // Disables subscription management (cancel, upgrade, downgrade)
+  // Use when: billing system maintenance, plan migration in progress
+  DISABLE_SUBSCRIPTION_MANAGEMENT:
+    process.env.KILL_SUBSCRIPTION_MANAGEMENT === "true",
+
+  // Disables analytics endpoints
+  // Use when: heavy aggregation queries impacting DB performance
+  DISABLE_ANALYTICS: process.env.KILL_ANALYTICS === "true",
 } as const;
 
 // ── Switch Name Type ──────────────────────────────────────────────
@@ -67,6 +80,15 @@ function killSwitch(
         switch: firedSwitch,
         path: req.path,
         userId: req.user?._id?.toString() || "unauthenticated",
+      });
+
+      // Fire asynchronous alert without blocking
+      import("../utils/alerting").then(({ sendAlert }) => {
+        sendAlert("KillSwitchFired", {
+          severity: "WARNING",
+          message: `Kill switch [${firedSwitch}] intercepted a request.`,
+          context: { path: req.path, userId: req.user?._id?.toString() },
+        }).catch(err => logger.error("Failed to send alert", { error: err }));
       });
 
       const lang = getLang(req);

@@ -11,6 +11,7 @@ import { Types } from "mongoose";
 import { planService } from "./plan.service";
 import { generatePlanSchema, updateContentItemSchema } from "./plan.validation";
 import { asyncHandler } from "../../shared/utils/asyncHandler";
+import { logger } from "../../shared/utils/logger";
 import { ApiError } from "../../shared/utils/ApiError";
 import { ErrorCode, SuccessCode } from "../../shared/types";
 import { triggerContentGeneration } from "../content/content.service";
@@ -99,8 +100,7 @@ export const approvePlan = asyncHandler(
 
     // Phase 6 — queue content generation jobs asynchronously
     triggerContentGeneration(plan, String(user._id)).catch((err: unknown) =>
-      // eslint-disable-next-line no-console
-      console.error("[approvePlan] triggerContentGeneration failed:", err),
+      logger.error("approve_plan_content_gen_failed", { error: err }),
     );
 
     // Phase 7/9 — auto-schedule social posts after content generation completes.

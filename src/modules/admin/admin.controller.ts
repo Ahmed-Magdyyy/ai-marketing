@@ -6,8 +6,18 @@ import { Request, Response } from "express";
 import { adminService } from "./admin.service";
 import { asyncHandler } from "../../shared/utils/asyncHandler";
 import { ApiError } from "../../shared/utils/ApiError";
-import { ErrorCode, SuccessCode, UserStatus } from "../../shared/types";
+import {
+  ErrorCode,
+  SuccessCode,
+  UserStatus,
+  PlanTier,
+  PlanStatus,
+  BillingCycle,
+} from "../../shared/types";
 import { sendSuccess } from "../../shared/utils/apiResponse";
+import { UserModel } from "../auth/user.model";
+import { getPlanLimits } from "../../shared/config/planLimits";
+import { logger } from "../../shared/utils/logger";
 
 // ── List Users ──────────────────────────────────────────────────
 
@@ -146,5 +156,175 @@ export const adminResetPasswordHandler = asyncHandler(
     await adminService.adminResetUserPassword(userId, adminId, newPassword);
 
     return sendSuccess(res, null, 200, SuccessCode.PasswordResetByAdmin, req);
+  },
+);
+
+// ── Admin: Set Plan Tier ────────────────────────────────────────
+// PUT /api/admin/users/:userId/plan
+// Body: { tier: PlanTier, billingCycle?: BillingCycle }
+
+export const adminSetPlanTierHandler = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = String(req.params.userId);
+    const adminId = req.user?._id?.toString();
+    if (!adminId) {
+      throw new ApiError(401, ErrorCode.Unauthorized);
+    }
+
+    const { tier, billingCycle } = req.body as {
+      tier: PlanTier;
+      billingCycle?: BillingCycle;
+    };
+
+    const validTiers = Object.values(PlanTier);
+    if (!tier || !validTiers.includes(tier)) {
+      throw new ApiError(
+        400,
+        ErrorCode.ValidationError,
+        `الخطة لازم تكون واحدة من: ${validTiers.join(", ")}`,
+      );
+    }
+
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      throw new ApiError(404, ErrorCode.NotFound);
+    }
+
+    const newLimits = getPlanLimits(tier);
+    const cycle =
+      billingCycle || user.plan.billingCycle || BillingCycle.Monthly;
+
+    // Set period end to 30 days from now (admin override)
+    const periodEnd = new Date();
+    periodEnd.setDate(periodEnd.getDate() + 30);
+
+    user.plan = {
+      tier,
+      billingCycle: cycle as BillingCycle,
+      status: PlanStatus.Active,
+      currentPeriodEnd: periodEnd,
+      paymobSubscriptionId: user.plan.paymobSubscriptionId || "",
+    };
+
+    user.limits = {
+      brandsAllowed: newLimits.brandsAllowed,
+      postsPerMonth: newLimits.postsPerMonth,
+      imagesPerMonth: newLimits.imagesPerMonth,
+      videosPerMonth: newLimits.videosPerMonth,
+      voiceoversPerMonth: newLimits.voiceoversPerMonth,
+      designsPerMonth: newLimits.designsPerMonth,
+      competitorResearchPerMonth: newLimits.competitorResearchPerMonth,
+      platforms: newLimits.platforms,
+      agentMemoryMonths: newLimits.agentMemoryMonths,
+      prioritySupport: newLimits.prioritySupport,
+    };
+
+    await user.save();
+
+    logger.info("admin_set_plan_tier", {
+      adminId,
+      userId,
+      tier,
+      billingCycle: cycle,
+    });
+
+    return sendSuccess(
+      res,
+      { plan: user.plan, limits: user.limits },
+      200,
+      SuccessCode.Ok,
+      req,
+    );
+  },
+);
+
+// ── Admin: Reset Usage ──────────────────────────────────────────
+// POST /api/admin/users/:userId/reset-usage
+// Resets all usage counters to 0 for the target user.
+
+export const adminResetUsageHandler = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = String(req.params.userId);
+    const adminId = req.user?._id?.toString();
+    if (!adminId) {
+      throw new ApiError(401, ErrorCode.Unauthorized);
+    }
+
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      throw new ApiError(404, ErrorCode.NotFound);
+    }
+
+    const resetAt = new Date(user.plan.currentPeriodEnd);
+
+    user.usage = {
+      postsGenerated: 0,
+      imagesGenerated: 0,
+      videosGenerated: 0,
+      voiceoversGenerated: 0,
+      designsGenerated: 0,
+      competitorResearchRuns: 0,
+      resetAt,
+    };
+
+    await user.save();
+
+    logger.info("admin_reset_usage", { adminId, userId });
+
+    return sendSuccess(
+      res,
+      { usage: user.usage },
+      200,
+      SuccessCode.UsageReset,
+      req,
+    );
+  },
+);
+
+// ── Admin: Extend Subscription ──────────────────────────────────
+// POST /api/admin/users/:userId/extend-subscription
+// Body: { days: number }
+// Extends currentPeriodEnd by N days.
+
+export const adminExtendSubscriptionHandler = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = String(req.params.userId);
+    const adminId = req.user?._id?.toString();
+    if (!adminId) {
+      throw new ApiError(401, ErrorCode.Unauthorized);
+    }
+
+    const { days } = req.body as { days: number };
+    if (!days || typeof days !== "number" || days < 1 || days > 365) {
+      throw new ApiError(
+        400,
+        ErrorCode.ValidationError,
+        "عدد الأيام لازم يكون رقم من ١ لـ ٣٦٥",
+      );
+    }
+
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      throw new ApiError(404, ErrorCode.NotFound);
+    }
+
+    // Extend from current period end or from now (whichever is later)
+    const base = new Date(
+      Math.max(new Date(user.plan.currentPeriodEnd).getTime(), Date.now()),
+    );
+    base.setDate(base.getDate() + days);
+
+    user.plan.currentPeriodEnd = base;
+    user.plan.status = PlanStatus.Active;
+    await user.save();
+
+    logger.info("admin_extend_subscription", {
+      adminId,
+      userId,
+      days,
+      newPeriodEnd: base.toISOString(),
+    });
+
+    return sendSuccess(res, { plan: user.plan }, 200, SuccessCode.Ok, req);
   },
 );

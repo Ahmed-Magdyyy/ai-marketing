@@ -447,6 +447,7 @@ export enum ErrorCode {
   CostCapReached = "COST_CAP_EXCEEDED",
   PlanExpired = "SUBSCRIPTION_EXPIRED",
   PlanUpgradeRequired = "SUBSCRIPTION_REQUIRED",
+  PaymentFailed = "PAYMENT_FAILED",
 
   // Rate Limiting
   RateLimitExceeded = "RATE_LIMIT_EXCEEDED",
@@ -575,6 +576,10 @@ export const ERROR_MESSAGES: Record<ErrorCode, { ar: string; en: string }> = {
     ar: "الميزة دي مش في خطتك الحالية. ترقّى عشان تستخدمها.",
     en: "This feature is not available on your current plan. Please upgrade.",
   },
+  [ErrorCode.PaymentFailed]: {
+    ar: "عملية الدفع فشلت. حاول تاني أو استخدم طريقة دفع تانية.",
+    en: "Payment failed. Please try again or use a different payment method.",
+  },
 
   // Rate Limiting
   [ErrorCode.RateLimitExceeded]: {
@@ -649,6 +654,14 @@ export enum SuccessCode {
   UserActivated = "USER_ACTIVATED",
   AccountDeleted = "ACCOUNT_DELETED",
   PasswordResetByAdmin = "PASSWORD_RESET_BY_ADMIN",
+
+  // Billing & Subscriptions
+  SubscriptionCreated = "SUBSCRIPTION_CREATED",
+  SubscriptionCancelled = "SUBSCRIPTION_CANCELLED",
+  UsageReset = "USAGE_RESET",
+
+  // Analytics
+  AnalyticsRetrieved = "ANALYTICS_RETRIEVED",
 }
 
 const SUCCESS_MESSAGES: Record<SuccessCode, { ar: string; en: string }> = {
@@ -720,6 +733,26 @@ const SUCCESS_MESSAGES: Record<SuccessCode, { ar: string; en: string }> = {
     ar: "تم إعادة تعيين كلمة المرور بواسطة الأدمن",
     en: "Password has been reset by admin",
   },
+
+  // Billing & Subscriptions
+  [SuccessCode.SubscriptionCreated]: {
+    ar: "تم تفعيل الاشتراك بنجاح",
+    en: "Subscription activated successfully",
+  },
+  [SuccessCode.SubscriptionCancelled]: {
+    ar: "تم إلغاء الاشتراك",
+    en: "Subscription cancelled",
+  },
+  [SuccessCode.UsageReset]: {
+    ar: "تم إعادة تعيين الاستخدام",
+    en: "Usage counters reset successfully",
+  },
+
+  // Analytics
+  [SuccessCode.AnalyticsRetrieved]: {
+    ar: "تم جلب التحليلات بنجاح",
+    en: "Analytics retrieved successfully",
+  },
 };
 
 export function getSuccessMessage(
@@ -741,6 +774,9 @@ export enum KillSwitch {
   Content = "KILL_CONTENT",
   Agent = "KILL_AGENT",
   All = "KILL_ALL",
+  PaymentGateways = "KILL_PAYMENT_GATEWAYS",
+  SubscriptionManagement = "KILL_SUBSCRIPTION_MANAGEMENT",
+  Analytics = "KILL_ANALYTICS",
 }
 
 // ── Scraping Tiers ───────────────────────────────────────────────
@@ -805,4 +841,36 @@ export interface IAgentLearning {
   source: LearningSource;
   qdrantPointId: string; // UUID of the corresponding Qdrant vector point
   createdAt: Date;
+}
+
+// ── Billing — Paymob Integration ────────────────────────────────
+// Phase 9: Checkout + webhook DTOs for Paymob payment gateway.
+
+export interface IPaymobCheckoutInput {
+  tier: PlanTier;
+  billingCycle: BillingCycle;
+}
+
+export interface IPaymobWebhookPayload {
+  type: "TRANSACTION";
+  obj: {
+    id: number;
+    success: boolean;
+    amount_cents: number;
+    currency: string;
+    order: { id: number };
+    payment_key_claims: {
+      billing_data: {
+        email: string;
+        first_name: string;
+        last_name: string;
+      };
+      extra: Record<string, string>; // includes userId, tier, billingCycle
+    };
+    source_data: {
+      type: string; // 'card' | 'wallet' | 'fawry' | 'valu'
+      sub_type: string;
+    };
+    created_at: string;
+  };
 }

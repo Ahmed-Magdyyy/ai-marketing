@@ -7,6 +7,8 @@ import {
   errorHandler,
   notFoundHandler,
 } from "./shared/middleware/error.middleware";
+import { requestLogger } from "./shared/middleware/requestLogger.middleware";
+import { securityHeaders } from "./shared/middleware/securityHeaders.middleware";
 import authRoutes from "./modules/auth/auth.routes";
 import { healthRoutes } from "./modules/health/health.routes";
 import clientRoutes from "./modules/client/client.routes";
@@ -17,6 +19,9 @@ import adminRoutes from "./modules/admin/admin.routes";
 import researchRoutes from "./modules/research/research.routes";
 import planRoutes from "./modules/plan/plan.routes";
 import socialRoutes from "./modules/social/social.routes";
+import billingRoutes from "./modules/billing/billing.routes";
+import analyticsRoutes from "./modules/analytics/analytics.routes";
+import { metricsRoutes } from "./modules/health/metrics.routes";
 
 function createApp(): Application {
   const app: Application = express();
@@ -35,10 +40,17 @@ function createApp(): Application {
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
 
+  // ── Security Hardening ──────────────────────────────────────────
+  app.use(securityHeaders);
+
   // ── Global Rate Limit ───────────────────────────────────────────
   app.use(globalLimiter);
 
+  // ── Request Logging ──────────────────────────────────────────────
+  app.use(requestLogger);
+
   // ── Routes ──────────────────────────────────────────────────────
+  app.use("/api/health/metrics", metricsRoutes);
   app.use("/api/health", healthRoutes);
   app.use("/api/auth", authLimiter, authRoutes);
   app.use("/api", clientRoutes);
@@ -49,6 +61,8 @@ function createApp(): Application {
   app.use("/api/plan", planRoutes);
   app.use("/api/social", socialRoutes);
   app.use("/api/admin", adminRoutes);
+  app.use("/api/billing", billingRoutes);
+  app.use("/api/analytics", analyticsRoutes);
 
   // ── 404 + Error Handler ─────────────────────────────────────────
   app.use(notFoundHandler);

@@ -14,6 +14,8 @@ import {
   SocialPlatform,
   MemoryCategory,
   LearningSource,
+  SuccessCode,
+  KillSwitch,
 } from "../src/shared/types";
 
 // ─────────────────────────────────────────────────────────────────
@@ -498,5 +500,271 @@ describe("Phase 8 — Agent Long-Term Memory", () => {
   it("ensureCollection is exported as a function from qdrant config", async () => {
     const { ensureCollection } = await import("../src/shared/config/qdrant");
     expect(typeof ensureCollection).toBe("function");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// Phase 9 — Paymob Billing & Subscriptions
+// ─────────────────────────────────────────────────────────────────
+
+describe("Phase 9 — Billing & Subscriptions", () => {
+  it("enforceQuota and enforceSubscription are exported functions from planEnforcement.middleware", async () => {
+    const { enforceQuota, enforceSubscription } =
+      await import("../src/shared/middleware/planEnforcement.middleware");
+    expect(typeof enforceQuota).toBe("function");
+    expect(typeof enforceSubscription).toBe("function");
+  });
+
+  it("costGuard is exported as a function from costGuard.middleware", async () => {
+    const { costGuard } =
+      await import("../src/shared/middleware/costGuard.middleware");
+    expect(typeof costGuard).toBe("function");
+  });
+
+  it("billing.service exports all 6 functions", async () => {
+    const billingService =
+      await import("../src/modules/billing/billing.service");
+    expect(typeof billingService.createCheckoutSession).toBe("function");
+    expect(typeof billingService.verifyWebhookHmac).toBe("function");
+    expect(typeof billingService.handlePaymentSuccess).toBe("function");
+    expect(typeof billingService.handleRenewalSuccess).toBe("function");
+    expect(typeof billingService.cancelSubscription).toBe("function");
+    expect(typeof billingService.getUsageSummary).toBe("function");
+  });
+
+  it("checkoutSchema and webhookSchema are exported from billing.validation", async () => {
+    const { checkoutSchema, webhookSchema } =
+      await import("../src/modules/billing/billing.validation");
+    expect(checkoutSchema).toBeDefined();
+    expect(webhookSchema).toBeDefined();
+    expect(typeof checkoutSchema.validate).toBe("function");
+    expect(typeof webhookSchema.validate).toBe("function");
+  });
+
+  it("KillSwitch.PaymentGateways and KillSwitch.SubscriptionManagement are defined", () => {
+    expect(KillSwitch.PaymentGateways).toBe("KILL_PAYMENT_GATEWAYS");
+    expect(KillSwitch.SubscriptionManagement).toBe(
+      "KILL_SUBSCRIPTION_MANAGEMENT",
+    );
+  });
+
+  it("SuccessCode has SubscriptionCreated, SubscriptionCancelled, and UsageReset", () => {
+    expect(SuccessCode.SubscriptionCreated).toBe("SUBSCRIPTION_CREATED");
+    expect(SuccessCode.SubscriptionCancelled).toBe("SUBSCRIPTION_CANCELLED");
+    expect(SuccessCode.UsageReset).toBe("USAGE_RESET");
+  });
+
+  it("POST /api/billing/checkout without auth returns 401", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post("/api/billing/checkout")
+      .send({ tier: "starter", billingCycle: "monthly" });
+    expect(res.status).toBe(401);
+  });
+
+  it("POST /api/billing/cancel without auth returns 401", async () => {
+    const app = createApp();
+    const res = await request(app).post("/api/billing/cancel");
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /api/billing/usage without auth returns 401", async () => {
+    const app = createApp();
+    const res = await request(app).get("/api/billing/usage");
+    expect(res.status).toBe(401);
+  });
+
+  it("POST /api/billing/webhook without HMAC returns 400", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post("/api/billing/webhook")
+      .send({ type: "TRANSACTION", obj: {} });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// Phase 10 — Production Hardening
+// ─────────────────────────────────────────────────────────────────
+
+describe("Phase 10 — Production Hardening", () => {
+  // ── Analytics Service ─────────────────────────────────────────
+
+  it("analytics.service exports all 5 query functions", async () => {
+    const analytics = await import(
+      "../src/modules/analytics/analytics.service"
+    );
+    expect(typeof analytics.getPlatformStats).toBe("function");
+    expect(typeof analytics.getUserGrowthData).toBe("function");
+    expect(typeof analytics.getContentMetrics).toBe("function");
+    expect(typeof analytics.getAIUsageMetrics).toBe("function");
+    expect(typeof analytics.getRevenueMetrics).toBe("function");
+  });
+
+  // ── Analytics Controller ──────────────────────────────────────
+
+  it("analytics.controller exports all 5 route handlers", async () => {
+    const ctrl = await import(
+      "../src/modules/analytics/analytics.controller"
+    );
+    expect(typeof ctrl.platformStatsHandler).toBe("function");
+    expect(typeof ctrl.userGrowthHandler).toBe("function");
+    expect(typeof ctrl.contentMetricsHandler).toBe("function");
+    expect(typeof ctrl.aiUsageHandler).toBe("function");
+    expect(typeof ctrl.revenueMetricsHandler).toBe("function");
+  });
+
+  // ── Analytics Routes (auth + admin guard) ─────────────────────
+
+  it("GET /api/analytics/platform-stats without auth returns 401", async () => {
+    const app = createApp();
+    const res = await request(app).get("/api/analytics/platform-stats");
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /api/analytics/user-growth without auth returns 401", async () => {
+    const app = createApp();
+    const res = await request(app).get("/api/analytics/user-growth");
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /api/analytics/content-metrics without auth returns 401", async () => {
+    const app = createApp();
+    const res = await request(app).get("/api/analytics/content-metrics");
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /api/analytics/ai-usage without auth returns 401", async () => {
+    const app = createApp();
+    const res = await request(app).get("/api/analytics/ai-usage");
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /api/analytics/revenue without auth returns 401", async () => {
+    const app = createApp();
+    const res = await request(app).get("/api/analytics/revenue");
+    expect(res.status).toBe(401);
+  });
+
+  // ── KillSwitch.Analytics ──────────────────────────────────────
+
+  it("KillSwitch.Analytics is defined with correct key", () => {
+    expect(KillSwitch.Analytics).toBe("KILL_ANALYTICS");
+  });
+
+  it("SWITCHES object has DISABLE_ANALYTICS property", async () => {
+    const { SWITCHES } = await import(
+      "../src/shared/middleware/killSwitch.middleware"
+    );
+    expect("DISABLE_ANALYTICS" in SWITCHES).toBe(true);
+  });
+
+  // ── Metrics ───────────────────────────────────────────────────
+
+  it("metrics singleton is exported from utils/metrics", async () => {
+    const { metrics } = await import("../src/shared/utils/metrics");
+    expect(metrics).toBeDefined();
+    expect(typeof metrics.inc).toBe("function");
+    expect(typeof metrics.observe).toBe("function");
+    expect(typeof metrics.format).toBe("function");
+  });
+
+  it("metrics.inc and format produce valid Prometheus output", async () => {
+    const { metrics } = await import("../src/shared/utils/metrics");
+    metrics.inc("test_counter_total");
+    const output = metrics.format();
+    expect(typeof output).toBe("string");
+    expect(output.length).toBeGreaterThan(0);
+  });
+
+  it("GET /api/health/metrics returns 200 with text/plain", async () => {
+    const app = createApp();
+    const res = await request(app).get("/api/health/metrics");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/text\/plain/);
+  });
+
+  // ── Request Logger ────────────────────────────────────────────
+
+  it("requestLogger middleware is exported as a function", async () => {
+    const { requestLogger } = await import(
+      "../src/shared/middleware/requestLogger.middleware"
+    );
+    expect(typeof requestLogger).toBe("function");
+  });
+
+  // ── Security Headers ─────────────────────────────────────────
+
+  it("securityHeaders middleware is exported as a function", async () => {
+    const { securityHeaders } = await import(
+      "../src/shared/middleware/securityHeaders.middleware"
+    );
+    expect(typeof securityHeaders).toBe("function");
+  });
+
+  it("securityHeaders rejects URI exceeding 2048 chars with 414", async () => {
+    const app = createApp();
+    const longPath = "/api/health/" + "a".repeat(2100);
+    const res = await request(app).get(longPath);
+    expect(res.status).toBe(414);
+  });
+
+  // ── Alerting ─────────────────────────────────────────────────
+
+  it("sendAlert is exported as a function from utils/alerting", async () => {
+    const { sendAlert } = await import("../src/shared/utils/alerting");
+    expect(typeof sendAlert).toBe("function");
+  });
+
+  it("sendAlert resolves without throwing when SLACK_WEBHOOK_URL is unset", async () => {
+    const originalUrl = process.env.SLACK_WEBHOOK_URL;
+    delete process.env.SLACK_WEBHOOK_URL;
+    const { sendAlert } = await import("../src/shared/utils/alerting");
+    await expect(
+      sendAlert("HighErrorRate", {
+        severity: "WARNING",
+        message: "test alert — no Slack configured",
+      }),
+    ).resolves.toBeUndefined();
+    if (originalUrl) process.env.SLACK_WEBHOOK_URL = originalUrl;
+  });
+
+  // ── Health Check Enhancements ─────────────────────────────────
+
+  it("GET /api/health returns status and uptime fields", async () => {
+    const app = createApp();
+    const res = await request(app).get("/api/health");
+    expect([200, 503]).toContain(res.status);
+    expect(res.body).toHaveProperty("status");
+    expect(res.body).toHaveProperty("uptime");
+  });
+
+  it("GET /api/health/ready returns 200 or 503", async () => {
+    const app = createApp();
+    const res = await request(app).get("/api/health/ready");
+    expect([200, 503]).toContain(res.status);
+  });
+
+  // ── Ops Scripts exist ─────────────────────────────────────────
+
+  it("scripts/rotate-tokens.ts exists on disk", () => {
+    const { existsSync } = require("fs");
+    const { join } = require("path");
+    const scriptPath = join(__dirname, "../scripts/rotate-tokens.ts");
+    expect(existsSync(scriptPath)).toBe(true);
+  });
+
+  it("scripts/backup-qdrant.ts exists on disk", () => {
+    const { existsSync } = require("fs");
+    const { join } = require("path");
+    const scriptPath = join(__dirname, "../scripts/backup-qdrant.ts");
+    expect(existsSync(scriptPath)).toBe(true);
+  });
+
+  it("scripts/RESTORE.md exists on disk", () => {
+    const { existsSync } = require("fs");
+    const { join } = require("path");
+    const docPath = join(__dirname, "../scripts/RESTORE.md");
+    expect(existsSync(docPath)).toBe(true);
   });
 });

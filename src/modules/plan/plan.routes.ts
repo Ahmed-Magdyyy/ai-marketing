@@ -2,6 +2,11 @@ import { Router } from "express";
 import { authMiddleware } from "../auth/auth.middleware";
 import { contentGenerationLimiter } from "../../shared/middleware/rateLimiter";
 import {
+  enforceSubscription,
+  enforceQuota,
+} from "../../shared/middleware/planEnforcement.middleware";
+import { costGuard } from "../../shared/middleware/costGuard.middleware";
+import {
   generatePlan,
   getPlan,
   approvePlan,
@@ -10,12 +15,19 @@ import {
 
 const router = Router();
 
-// All plan routes require authentication
+// All plan routes require authentication + active subscription
 router.use(authMiddleware);
+router.use(enforceSubscription());
 
 // ── POST /api/plan/generate ──────────────────────────────────────
-// Generate a new marketing plan (rate-limited)
-router.post("/generate", contentGenerationLimiter, generatePlan);
+// Generate a new marketing plan (rate-limited, quota + cost guarded)
+router.post(
+  "/generate",
+  contentGenerationLimiter,
+  enforceQuota("posts"),
+  costGuard,
+  generatePlan,
+);
 
 // ── GET /api/plan/:id ────────────────────────────────────────────
 // Get plan + content items (always available — read-only)

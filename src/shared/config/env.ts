@@ -63,6 +63,10 @@ interface EnvConfig {
 
   // App
   FRONTEND_URL: string;
+
+  // Integrations (Optional)
+  SENTRY_DSN?: string;
+  SLACK_WEBHOOK_URL?: string;
 }
 
 function validateEnv(): EnvConfig {
@@ -147,6 +151,10 @@ function validateEnv(): EnvConfig {
 
     // App
     FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:3001",
+
+    // Integrations
+    SENTRY_DSN: process.env.SENTRY_DSN,
+    SLACK_WEBHOOK_URL: process.env.SLACK_WEBHOOK_URL,
   };
 }
 

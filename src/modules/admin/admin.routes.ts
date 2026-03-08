@@ -12,6 +12,9 @@ import {
   deleteUserHandler,
   hardDeleteUserHandler,
   adminResetPasswordHandler,
+  adminSetPlanTierHandler,
+  adminResetUsageHandler,
+  adminExtendSubscriptionHandler,
 } from "./admin.controller";
 
 const router = Router();
@@ -25,5 +28,13 @@ router.patch("/users/:userId/status", updateUserStatusHandler);
 router.patch("/users/:userId/password", adminResetPasswordHandler);
 router.delete("/users/:userId", deleteUserHandler);
 router.delete("/users/:userId/hard", hardDeleteUserHandler);
+
+// ── Phase 9: Admin Billing Overrides ─────────────────────────────
+router.put("/users/:userId/plan", adminSetPlanTierHandler);
+router.post("/users/:userId/reset-usage", adminResetUsageHandler);
+router.post(
+  "/users/:userId/extend-subscription",
+  adminExtendSubscriptionHandler,
+);
 
 export default router;

@@ -10,6 +10,18 @@ import { ApiError } from "../utils/ApiError";
 import { ErrorCode, getErrorMessage } from "../types";
 import { getLang } from "../utils/apiResponse";
 import { logger } from "../utils/logger";
+import * as Sentry from "@sentry/node";
+
+// ── Sentry Initialization ─────────────────────────────────────────
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || "development",
+    // Tracing
+    tracesSampleRate: 1.0, 
+  });
+  logger.info("sentry_initialized", { dsn: process.env.SENTRY_DSN });
+}
 
 function errorHandler(
   err: Error,
@@ -126,6 +138,15 @@ function errorHandler(
     errorMessage: err.message,
     stack: err.stack,
   });
+
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(err, {
+      tags: {
+        path: req.path,
+        method: req.method,
+      },
+    });
+  }
 
   const message = getErrorMessage(ErrorCode.InternalError, lang);
 
